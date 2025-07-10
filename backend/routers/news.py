@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy import func
+from models.database import NewsArticle, RawFeedData, FeedFetchLog, RSSFeed
 
 from database import get_db
 from services.rss_service import RSSService
@@ -53,6 +54,7 @@ async def health_check(db: Session = Depends(get_db)):
 async def get_articles(
     category: Optional[NewsCategory] = Query(None, description="Filter by category"),
     source: Optional[str] = Query(None, description="Filter by source name"),
+    feeds: Optional[str] = Query(None, description="Comma-separated list of feed names to filter by"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
     db: Session = Depends(get_db)
@@ -61,22 +63,30 @@ async def get_articles(
     service = RSSService(db)
     offset = (page - 1) * per_page
     
+    # Build query with filters
+    from models.database import NewsArticle
+    query = db.query(NewsArticle)
+    
     if category:
-        articles = service.get_articles_by_category(category, per_page, offset)
-    elif source:
-        articles = service.get_articles_by_source(source, per_page)
-    else:
-        articles = service.get_recent_articles(per_page)
+        query = query.filter(NewsArticle.category == category.value)
+    
+    if source:
+        query = query.filter(NewsArticle.source_name == source)
+    
+    if feeds:
+        feed_names = [name.strip() for name in feeds.split(',') if name.strip()]
+        if feed_names:
+            query = query.filter(NewsArticle.source_name.in_(feed_names))
     
     # Get total count for pagination
-    from models.database import NewsArticle
-    total_query = db.query(NewsArticle)
-    if category:
-        total_query = total_query.filter(NewsArticle.category == category.value)
-    elif source:
-        total_query = total_query.filter(NewsArticle.source_name == source)
+    total = query.count()
     
-    total = total_query.count()
+    # Get paginated results
+    articles = query.order_by(NewsArticle.published_date.desc().nullslast(), NewsArticle.created_at.desc()) \
+                   .offset(offset) \
+                   .limit(per_page) \
+                   .all()
+    
     total_pages = (total + per_page - 1) // per_page
     
     return NewsArticleList(
@@ -172,7 +182,7 @@ async def fetch_all_feeds(db: Session = Depends(get_db)):
 async def get_stats(db: Session = Depends(get_db)):
     """Get news aggregation statistics."""
     from models.database import NewsArticle, RSSFeed, FeedFetchLog
-    
+    # TODO: optimize this. No need to run this query every time.
     # Article counts by category
     category_stats = db.query(
         NewsArticle.category,
@@ -238,7 +248,6 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
 @router.delete("/cleanup/all")
 async def cleanup_all_data(db: Session = Depends(get_db)):
     """Clean up all data from the database."""
-    from models.database import NewsArticle, RawFeedData, FeedFetchLog
     
     try:
         # Delete all articles
@@ -266,9 +275,9 @@ async def cleanup_all_data(db: Session = Depends(get_db)):
 @router.delete("/cleanup/feed/{feed_name}")
 async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
     """Clean up data for a specific feed."""
-    from models.database import NewsArticle, RawFeedData, FeedFetchLog
-    
+    print(f"Attempting to cleanup feed data for {feed_name}")
     try:
+        feed_id = db.query(RSSFeed).filter(RSSFeed.name == feed_name).first().id
         # Delete articles from this feed
         articles_deleted = db.query(NewsArticle).filter(
             NewsArticle.source_name == feed_name
@@ -276,7 +285,7 @@ async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
         
         # Delete raw feed data for this feed
         raw_data_deleted = db.query(RawFeedData).filter(
-            RawFeedData.feed_name == feed_name
+            RawFeedData.feed_id == feed_id
         ).delete()
         
         # Delete fetch logs for this feed
@@ -294,6 +303,7 @@ async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
             "logs_deleted": logs_deleted
         }
     except Exception as e:
+        print(f"Error cleaning up feed data: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to cleanup feed data: {str(e)}")
 

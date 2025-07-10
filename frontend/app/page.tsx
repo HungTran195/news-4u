@@ -8,6 +8,8 @@ import ArticleDetail from '@/components/ArticleDetail';
 import CleanupModal from '@/components/CleanupModal';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
+import FeedSelector from '@/components/FeedSelector';
+import ArticleCard from '@/components/ArticleCard';
 
 export default function HomePage() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
@@ -25,24 +27,84 @@ export default function HomePage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<NewsArticle[]>([]);
   const [searchTotal, setSearchTotal] = useState(0);
+  
+  // New state for feed selection and lazy loading
+  const [selectedFeeds, setSelectedFeeds] = useState<string[]>([]);
+  const [totalArticles, setTotalArticles] = useState(0);
+  const [loadingArticles, setLoadingArticles] = useState(false);
+  const [loadingArticleId, setLoadingArticleId] = useState<number | null>(null);
+  const [hasLoadedArticles, setHasLoadedArticles] = useState(false);
 
   useEffect(() => {
-    loadData();
+    loadStats();
   }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (hasLoadedArticles) {
+      loadArticles();
+    }
+  }, [currentPage, selectedCategory, selectedFeeds, hasLoadedArticles]);
+
+  const loadStats = async () => {
     try {
       setLoading(true);
-      const [articlesData, statsData] = await Promise.all([
-        newsApi.getArticles({ per_page: 50 }),
-        newsApi.getStats(),
-      ]);
-      setArticles(articlesData.articles);
+      const statsData = await newsApi.getStats();
       setStats(statsData);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading stats:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadArticles = async () => {
+    try {
+      setLoadingArticles(true);
+      const params: any = {
+        page: currentPage,
+        per_page: 12
+      };
+      
+      if (selectedCategory !== 'all') {
+        params.category = selectedCategory;
+      }
+      
+      if (selectedFeeds.length > 0) {
+        params.feeds = selectedFeeds;
+      }
+      
+      const articlesData = await newsApi.getArticles(params);
+      setArticles(articlesData.articles);
+      setTotalArticles(articlesData.total);
+    } catch (error) {
+      console.error('Error loading articles:', error);
+    } finally {
+      setLoadingArticles(false);
+    }
+  };
+
+  const handleLoadArticles = () => {
+    setHasLoadedArticles(true);
+    setCurrentPage(1);
+  };
+
+  const handleArticleClick = async (article: NewsArticle) => {
+    setLoadingArticleId(article.id);
+    try {
+      // Load full article content if not already loaded
+      if (!article.content) {
+        const fullArticle = await newsApi.getArticle(article.id);
+        setArticles(prev => prev.map(a => a.id === article.id ? fullArticle : a));
+        setSelectedArticle(fullArticle);
+      } else {
+        setSelectedArticle(article);
+      }
+    } catch (error) {
+      console.error('Error loading article:', error);
+      // Still show the article even if content loading fails
+      setSelectedArticle(article);
+    } finally {
+      setLoadingArticleId(null);
     }
   };
 
@@ -50,7 +112,10 @@ export default function HomePage() {
     try {
       setFetching(true);
       await newsApi.fetchFeeds();
-      await loadData(); // Reload data after fetching
+      await loadStats(); // Reload stats after fetching
+      if (hasLoadedArticles) {
+        await loadArticles(); // Reload articles if they were already loaded
+      }
     } catch (error) {
       console.error('Error fetching feeds:', error);
     } finally {
@@ -79,7 +144,10 @@ export default function HomePage() {
 
   const handleCleanupComplete = () => {
     // Reload data after cleanup
-    loadData();
+    loadStats();
+    if (hasLoadedArticles) {
+      loadArticles();
+    }
   };
 
   const handleSearch = async (query: string, category: string, timeFilter: string) => {
@@ -99,7 +167,10 @@ export default function HomePage() {
       
       if (result.status === 'success') {
         // Reload articles to show the newly saved ones
-        await loadData();
+        await loadStats();
+        if (hasLoadedArticles) {
+          await loadArticles();
+        }
         setSearchResults([]);
         setSearchTotal(0);
       } else {
@@ -124,17 +195,14 @@ export default function HomePage() {
     setCurrentPage(page);
   };
 
+  const handleFeedSelectionChange = (feeds: string[]) => {
+    setSelectedFeeds(feeds);
+    setCurrentPage(1);
+  };
+
   // Pagination logic
   const itemsPerPage = 12;
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  
-  const filteredArticles = selectedCategory === 'all' 
-    ? articles 
-    : articles.filter(article => article.category === selectedCategory);
-  
-  const paginatedArticles = filteredArticles.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(filteredArticles.length / itemsPerPage);
+  const totalPages = Math.ceil(totalArticles / itemsPerPage);
 
   if (loading) {
     return (
@@ -171,6 +239,10 @@ export default function HomePage() {
               <h1 className="text-2xl font-bold text-gray-900">News 4U</h1>
             </div>
             <div className="flex items-center space-x-3">
+              <FeedSelector
+                selectedFeeds={selectedFeeds}
+                onFeedSelectionChange={handleFeedSelectionChange}
+              />
               <button
                 onClick={handleFetchFeeds}
                 disabled={fetching}
@@ -195,7 +267,7 @@ export default function HomePage() {
       {stats && (
         <div className="bg-white border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-primary-600">{stats.total_articles}</div>
                 <div className="text-sm text-gray-600">Total Articles</div>
@@ -215,6 +287,12 @@ export default function HomePage() {
                   {stats.articles_by_category.finance || 0}
                 </div>
                 <div className="text-sm text-gray-600">Finance News</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">
+                  {stats.articles_by_category.global_news || 0}
+                </div>
+                <div className="text-sm text-gray-600">Global News</div>
               </div>
             </div>
           </div>
@@ -314,88 +392,82 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Articles Grid */}
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {paginatedArticles.map((article) => (
-            <article 
-              key={article.id} 
-              className="card hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setSelectedArticle(article)}
-            >
-              {article.image_url && (
-                <div className="aspect-video bg-gray-200 rounded-t-lg overflow-hidden">
-                  <img
-                    src={article.image_url}
-                    alt={article.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(article.category)}`}>
-                    {getCategoryIcon(article.category)} {article.category.replace('_', ' ')}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {formatRelativeTime(article.published_date || article.created_at)}
-                  </span>
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-                  {article.title}
-                </h2>
-                {article.summary && (
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-                    {article.summary}
-                  </p>
-                )}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg">{getSourceIcon(article.source_name)}</span>
-                    <span className="text-sm font-medium text-gray-700">{article.source_name}</span>
-                  </div>
-                  <a
-                    href={article.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Read More →
-                  </a>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        {paginatedArticles.length === 0 && (
+        {/* Load Articles Button (if not loaded yet) */}
+        {!hasLoadedArticles && activeTab === 'rss' && (
           <div className="text-center py-12">
-            <Newspaper className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No articles found</h3>
-            <p className="text-gray-600">
-              {activeTab === 'google' 
-                ? 'Try searching for news or fetching RSS feeds.' 
-                : 'Try fetching news or selecting a different category.'
-              }
+            <Newspaper className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-xl font-medium text-gray-900 mb-2">Ready to explore news?</h3>
+            <p className="text-gray-600 mb-6">
+              Click the button below to load articles from your selected feeds and categories.
             </p>
+            <button
+              onClick={handleLoadArticles}
+              className="btn btn-primary px-6 py-3 text-lg"
+            >
+              <Newspaper className="h-5 w-5 mr-2" />
+              Load Articles
+            </button>
           </div>
-                )}
-      </main>
+        )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-          totalItems={filteredArticles.length}
-          itemsPerPage={itemsPerPage}
-        />
-      )}
+        {/* Articles Grid */}
+        {hasLoadedArticles && (
+          <>
+            {loadingArticles ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="card animate-pulse">
+                    <div className="aspect-video bg-gray-200 rounded-t-lg"></div>
+                    <div className="p-6">
+                      <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
+                      <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {articles.map((article) => (
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      onArticleClick={handleArticleClick}
+                      isLoading={loadingArticleId === article.id}
+                    />
+                  ))}
+                </div>
+
+                {articles.length === 0 && (
+                  <div className="text-center py-12">
+                    <Newspaper className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No articles found</h3>
+                    <p className="text-gray-600">
+                      Try fetching news or selecting a different category.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Pagination */}
+        {hasLoadedArticles && totalPages > 1 && !loadingArticles && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+            totalItems={totalArticles}
+            itemsPerPage={itemsPerPage}
+          />
+        )}
+      </main>
 
       {/* Cleanup Modal */}
       <CleanupModal

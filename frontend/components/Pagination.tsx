@@ -1,28 +1,29 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
-  onPageChange: (page: number) => void;
   totalItems: number;
   itemsPerPage: number;
+  onPageChange: (page: number) => void;
 }
 
 export default function Pagination({
   currentPage,
   totalPages,
-  onPageChange,
   totalItems,
-  itemsPerPage
+  itemsPerPage,
+  onPageChange,
 }: PaginationProps) {
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
+  // Generate page numbers to show
   const getPageNumbers = () => {
     const pages = [];
-    const maxVisiblePages = 5;
+    const maxVisiblePages = 7;
     
     if (totalPages <= maxVisiblePages) {
       // Show all pages if total is small
@@ -31,34 +32,23 @@ export default function Pagination({
       }
     } else {
       // Show pages around current page
-      let start = Math.max(1, currentPage - 2);
-      let end = Math.min(totalPages, currentPage + 2);
+      const start = Math.max(1, currentPage - 3);
+      const end = Math.min(totalPages, currentPage + 3);
       
-      // Adjust if we're near the edges
-      if (currentPage <= 3) {
-        end = Math.min(totalPages, 5);
-      } else if (currentPage >= totalPages - 2) {
-        start = Math.max(1, totalPages - 4);
-      }
-      
-      // Add first page and ellipsis if needed
+      // Always show first page
       if (start > 1) {
         pages.push(1);
-        if (start > 2) {
-          pages.push('...');
-        }
+        if (start > 2) pages.push('...');
       }
       
-      // Add visible pages
+      // Show pages around current
       for (let i = start; i <= end; i++) {
         pages.push(i);
       }
       
-      // Add last page and ellipsis if needed
+      // Always show last page
       if (end < totalPages) {
-        if (end < totalPages - 1) {
-          pages.push('...');
-        }
+        if (end < totalPages - 1) pages.push('...');
         pages.push(totalPages);
       }
     }
@@ -66,14 +56,11 @@ export default function Pagination({
     return pages;
   };
 
-  if (totalPages <= 1) {
-    return null;
-  }
+  const pageNumbers = getPageNumbers();
 
   return (
-    <div className="flex items-center justify-between bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
-      {/* Items info */}
-      <div className="flex flex-1 justify-between sm:hidden">
+    <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+      <div className="flex-1 flex justify-between sm:hidden">
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
@@ -101,42 +88,62 @@ export default function Pagination({
         
         <div>
           <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-            {/* Previous button */}
+            {/* First page */}
+            <button
+              onClick={() => onPageChange(1)}
+              disabled={currentPage === 1}
+              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">First</span>
+              <ChevronsLeft className="h-5 w-5" />
+            </button>
+            
+            {/* Previous page */}
             <button
               onClick={() => onPageChange(currentPage - 1)}
               disabled={currentPage === 1}
-              className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="sr-only">Previous</span>
               <ChevronLeft className="h-5 w-5" />
             </button>
             
             {/* Page numbers */}
-            {getPageNumbers().map((page, index) => (
+            {pageNumbers.map((page, index) => (
               <button
                 key={index}
                 onClick={() => typeof page === 'number' ? onPageChange(page) : null}
                 disabled={typeof page !== 'number'}
                 className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                   page === currentPage
-                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                    ? 'z-10 bg-primary-50 border-primary-500 text-primary-600'
                     : page === '...'
-                    ? 'bg-white border-gray-300 text-gray-500 cursor-default'
+                    ? 'bg-white border-gray-300 text-gray-700 cursor-default'
                     : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                 }`}
               >
-                {page === '...' ? <MoreHorizontal className="h-4 w-4" /> : page}
+                {page}
               </button>
             ))}
             
-            {/* Next button */}
+            {/* Next page */}
             <button
               onClick={() => onPageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="sr-only">Next</span>
               <ChevronRight className="h-5 w-5" />
+            </button>
+            
+            {/* Last page */}
+            <button
+              onClick={() => onPageChange(totalPages)}
+              disabled={currentPage === totalPages}
+              className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="sr-only">Last</span>
+              <ChevronsRight className="h-5 w-5" />
             </button>
           </nav>
         </div>

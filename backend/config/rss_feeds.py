@@ -82,6 +82,24 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
             category=NewsCategory.GLOBAL_NEWS,
             description="Explanatory journalism and news analysis"
         ),
+        RSSFeed(
+            name="Vnexpress",
+            url="https://vnexpress.net/rss/tin-moi-nhat.rss",
+            category=NewsCategory.GLOBAL_NEWS,
+            description="Tin nhanh VnExpress - Đọc báo, tin tức online 24h"
+        ),
+        RSSFeed(
+            name="Kenh14",
+            url="https://kenh14.vn/rss/home.rss",
+            category=NewsCategory.GLOBAL_NEWS,
+            description="Tin tức giải trí - xã hội Việt Nam "
+        ),
+        RSSFeed(
+            name="Tuoitre",
+            url="https://tuoitre.vn/rss/tin-moi-nhat.rss",
+            category=NewsCategory.GLOBAL_NEWS,
+            description="Tuổi Trẻ Online - Tin mới nhất"
+        ),
     ]
 }
 

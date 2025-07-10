@@ -50,11 +50,13 @@ class RSSService:
                     raw_content=response.text,
                     status_code=response.status_code
                 )
+                print(f'---- Get raw data from {feed.name} ----')
                 self.db.add(raw_data)
                 
                 # Parse feed
                 parsed_feed = feedparser.parse(response.text)
                 articles_found = len(parsed_feed.entries)
+                print(f'---- Found {articles_found} articles from {feed.name} ----')
                 
                 # Process articles
                 articles_processed = await self._process_articles(parsed_feed.entries, feed)
@@ -76,6 +78,7 @@ class RSSService:
                 }
                 
         except Exception as e:
+            print(f"Error fetching feed {feed.name}: {e}")
             execution_time = int((time.time() - start_time) * 1000)
             log_entry.status = "error"
             log_entry.error_message = str(e)
@@ -114,6 +117,9 @@ class RSSService:
         Process RSS feed entries into news articles.
         """
         processed_count = 0
+
+        print(f'---- Processing {len(entries)} articles from {feed.name} ----')
+        all_links = set()
         
         for entry in entries:
             try:
@@ -135,8 +141,18 @@ class RSSService:
                 
                 # Extract full content from the article URL
                 content = None
+                additional_images = []
                 if link:
-                    content = await self._extract_article_content(link)
+                    if link in all_links:
+                        print(f'---- Link {link} already processed ----')
+                        continue
+                    all_links.add(link)
+                    content, additional_images = await self._extract_article_content_and_images(link)
+                
+                # Use the best available image (RSS image first, then content images)
+                final_image_url = image_url
+                if not final_image_url and additional_images:
+                    final_image_url = additional_images[0]
                 
                 # Create article
                 article = NewsArticle(
@@ -149,7 +165,7 @@ class RSSService:
                     category=feed.category.value,
                     source_name=feed.name,
                     source_url=feed.url,
-                    image_url=image_url,
+                    image_url=final_image_url,
                     is_processed=True
                 )
                 
@@ -271,25 +287,143 @@ class RSSService:
             print(f"Error extracting content from {article_url}: {e}")
         
         return None
-    
-    def _clean_extracted_content(self, text: str) -> str:
+
+    async def _extract_article_content_and_images(self, article_url: str) -> tuple[Optional[str], list[str]]:
         """
-        Clean and format extracted content.
+        Extract full article content and images from the original website.
+        Returns tuple of (content_text, image_urls)
         """
-        # Remove excessive whitespace
-        text = re.sub(r'\n\s*\n', '\n\n', text)
-        text = re.sub(r' +', ' ', text)
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(article_url)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Remove script and style elements
+                for script in soup(["script", "style"]):
+                    script.decompose()
+                
+                # Extract images first
+                image_urls = self._extract_images_from_soup(soup, article_url)
+                
+                # Use trafilatura to extract main content
+                extracted_text = trafilatura.extract(response.text, include_formatting=True)
+                
+                if extracted_text:
+                    # Clean up the extracted text
+                    cleaned_text = self._clean_extracted_content(extracted_text)
+                    return cleaned_text, image_urls
+                
+                # Fallback to BeautifulSoup if trafilatura fails
+                content_selectors = [
+                    'article',
+                    '[class*="content"]',
+                    '[class*="article"]',
+                    '[class*="post"]',
+                    'main',
+                    '.entry-content',
+                    '.post-content',
+                    '.article-content'
+                ]
+                
+                for selector in content_selectors:
+                    content = soup.select_one(selector)
+                    if content:
+                        text = content.get_text(separator='\n', strip=True)
+                        if len(text) > 200:  # Ensure we have substantial content
+                            return self._clean_extracted_content(text), image_urls
+                
+                # If no specific content area found, get body text
+                body = soup.find('body')
+                if body:
+                    text = body.get_text(separator='\n', strip=True)
+                    return self._clean_extracted_content(text), image_urls
+                
+        except Exception as e:
+            print(f"Error extracting content from {article_url}: {e}")
         
-        # Remove common unwanted patterns
-        text = re.sub(r'Share this article.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Follow us.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Subscribe.*', '', text, flags=re.IGNORECASE)
+        return None, []
+
+    def _extract_images_from_soup(self, soup: BeautifulSoup, base_url: str) -> list[str]:
+        """
+        Extract image URLs from BeautifulSoup object.
+        """
+        image_urls = []
         
-        # Limit content length to avoid database issues
-        if len(text) > 10000:
-            text = text[:10000] + "..."
+        # Find all img tags
+        img_tags = soup.find_all('img')
         
-        return text.strip()
+        for img in img_tags:
+            src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+            if src:
+                # Convert relative URLs to absolute
+                if src.startswith('//'):
+                    src = 'https:' + src
+                elif src.startswith('/'):
+                    from urllib.parse import urljoin
+                    src = urljoin(base_url, src)
+                elif not src.startswith(('http://', 'https://')):
+                    from urllib.parse import urljoin
+                    src = urljoin(base_url, src)
+                
+                # Filter out small images, icons, and common unwanted images
+                if self._is_valid_article_image(img, src):
+                    image_urls.append(src)
+        
+        # Also check for Open Graph and Twitter Card images
+        try:
+            og_image = soup.find('meta', attrs={'property': 'og:image'})
+            if og_image and og_image.get('content'):
+                image_urls.append(og_image['content'])
+            
+            twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+            if twitter_image and twitter_image.get('content'):
+                image_urls.append(twitter_image['content'])
+        except Exception as e:
+            print(f"Error extracting meta images: {e}")
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_images = []
+        for img in image_urls:
+            if img not in seen:
+                seen.add(img)
+                unique_images.append(img)
+        
+        return unique_images[:5]  # Limit to 5 images per article
+
+    def _is_valid_article_image(self, img_tag, src: str) -> bool:
+        """
+        Check if an image is likely to be a valid article image.
+        """
+        # Skip very small images (likely icons)
+        width = img_tag.get('width')
+        height = img_tag.get('height')
+        if width and height:
+            try:
+                if int(width) < 100 or int(height) < 100:
+                    return False
+            except ValueError:
+                pass
+        
+        # Skip common unwanted image patterns
+        unwanted_patterns = [
+            'avatar', 'icon', 'logo', 'banner', 'ad', 'advertisement',
+            'social', 'share', 'facebook', 'twitter', 'instagram',
+            'pixel', 'tracking', 'analytics', '1x1', 'blank'
+        ]
+        
+        src_lower = src.lower()
+        for pattern in unwanted_patterns:
+            if pattern in src_lower:
+                return False
+        
+        # Skip data URIs and very short URLs
+        if src.startswith('data:') or len(src) < 10:
+            return False
+        
+        return True
     
     async def fetch_all_feeds(self) -> Dict:
         """
@@ -338,3 +472,22 @@ class RSSService:
         ).order_by(
             NewsArticle.published_date.desc()
         ).limit(limit).all() 
+
+    def _clean_extracted_content(self, text: str) -> str:
+        """
+        Clean and format extracted content.
+        """
+        # Remove excessive whitespace
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        text = re.sub(r' +', ' ', text)
+        
+        # Remove common unwanted patterns
+        text = re.sub(r'Share this article.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Follow us.*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'Subscribe.*', '', text, flags=re.IGNORECASE)
+        
+        # Limit content length to avoid database issues
+        if len(text) > 10000:
+            text = text[:10000] + "..."
+        
+        return text.strip() 
