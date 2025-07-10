@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react';
 import { newsApi, NewsArticle, Stats } from '@/lib/api';
 import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
-import { RefreshCw, TrendingUp, Newspaper, Globe, Zap, Trash2, Search } from 'lucide-react';
+import { RefreshCw, TrendingUp, Newspaper, Globe, Zap, Trash2, Search, TestTube } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
 import CleanupModal from '@/components/CleanupModal';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
 import FeedSelector from '@/components/FeedSelector';
+import FeedManager from '@/components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
+import ContentExtractionTest from '@/components/ContentExtractionTest';
 
 export default function HomePage() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
@@ -19,7 +21,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'rss' | 'google'>('rss');
+  const [activeTab, setActiveTab] = useState<'rss' | 'google' | 'test'>('rss');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState('all');
@@ -158,26 +160,26 @@ export default function HomePage() {
       setSearchTimeFilter(timeFilter);
       setCurrentPage(1);
       
-      const result = await newsApi.searchGoogleNews({
+      const result = await newsApi.searchArticles({
         query,
         category,
         time_filter: timeFilter,
-        max_results: 50
+        page: 1,
+        per_page: 12
       });
       
       if (result.status === 'success') {
-        // Reload articles to show the newly saved ones
-        await loadStats();
-        if (hasLoadedArticles) {
-          await loadArticles();
-        }
+        setSearchResults(result.articles);
+        setSearchTotal(result.total);
+      } else {
+        console.error('Search failed');
         setSearchResults([]);
         setSearchTotal(0);
-      } else {
-        console.error('Search failed:', result.error_message);
       }
     } catch (error) {
-      console.error('Error searching Google News:', error);
+      console.error('Error searching articles:', error);
+      setSearchResults([]);
+      setSearchTotal(0);
     } finally {
       setIsSearching(false);
     }
@@ -195,9 +197,42 @@ export default function HomePage() {
     setCurrentPage(page);
   };
 
+  const handleSearchPageChange = async (page: number) => {
+    if (!searchQuery) return;
+    
+    try {
+      setIsSearching(true);
+      const result = await newsApi.searchArticles({
+        query: searchQuery,
+        category: searchCategory,
+        time_filter: searchTimeFilter,
+        page,
+        per_page: 12
+      });
+      
+      if (result.status === 'success') {
+        setSearchResults(result.articles);
+        setSearchTotal(result.total);
+        setCurrentPage(page);
+      }
+    } catch (error) {
+      console.error('Error loading search page:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const handleFeedSelectionChange = (feeds: string[]) => {
     setSelectedFeeds(feeds);
     setCurrentPage(1);
+  };
+
+  const handleFeedFetchComplete = () => {
+    // Reload stats and articles after feeds are fetched
+    loadStats();
+    if (hasLoadedArticles) {
+      loadArticles();
+    }
   };
 
   // Pagination logic
@@ -243,13 +278,16 @@ export default function HomePage() {
                 selectedFeeds={selectedFeeds}
                 onFeedSelectionChange={handleFeedSelectionChange}
               />
+              <FeedManager
+                onFeedFetchComplete={handleFeedFetchComplete}
+              />
               <button
                 onClick={handleFetchFeeds}
                 disabled={fetching}
                 className="btn btn-primary px-4 py-2"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${fetching ? 'animate-spin' : ''}`} />
-                {fetching ? 'Fetching...' : 'Fetch News'}
+                {fetching ? 'Fetching...' : 'Fetch All'}
               </button>
               <button
                 onClick={() => setShowCleanupModal(true)}
@@ -323,7 +361,18 @@ export default function HomePage() {
               }`}
             >
               <Search className="inline h-4 w-4 mr-2" />
-              Google News Search
+              Search Articles
+            </button>
+            <button
+              onClick={() => setActiveTab('test')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'test'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <TestTube className="inline h-4 w-4 mr-2" />
+              Content Test
             </button>
           </div>
         </div>
@@ -340,6 +389,35 @@ export default function HomePage() {
             />
           </div>
         </div>
+      )}
+
+      {/* Search Results */}
+      {activeTab === 'google' && searchQuery && (
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Search Results for "{searchQuery}"
+                </h2>
+                <p className="text-sm text-gray-600">
+                  Found {searchTotal} articles
+                </p>
+              </div>
+              <button
+                onClick={handleSearchClear}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Clear Search
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content Extraction Test */}
+      {activeTab === 'test' && (
+        <ContentExtractionTest />
       )}
 
       {/* Category Filter (RSS Tab) */}
@@ -394,28 +472,89 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Load Articles Button (if not loaded yet) */}
-        {!hasLoadedArticles && activeTab === 'rss' && (
-          <div className="text-center py-12">
-            <Newspaper className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-900 mb-2">Ready to explore news?</h3>
-            <p className="text-gray-600 mb-6">
-              Click the button below to load articles from your selected feeds and categories.
-            </p>
-            <button
-              onClick={handleLoadArticles}
-              className="btn btn-primary px-6 py-3 text-lg"
-            >
-              <Newspaper className="h-5 w-5 mr-2" />
-              Load Articles
-            </button>
-          </div>
+        {/* RSS Feeds Content */}
+        {activeTab === 'rss' && (
+          <>
+            {/* Load Articles Button (if not loaded yet) */}
+            {!hasLoadedArticles && (
+              <div className="text-center py-12">
+                <Newspaper className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-gray-900 mb-2">Ready to explore news?</h3>
+                <p className="text-gray-600 mb-6">
+                  Click the button below to load articles from your selected feeds and categories.
+                </p>
+                <button
+                  onClick={handleLoadArticles}
+                  className="btn btn-primary px-6 py-3 text-lg"
+                >
+                  <Newspaper className="h-5 w-5 mr-2" />
+                  Load Articles
+                </button>
+              </div>
+            )}
+
+            {/* Articles Grid */}
+            {hasLoadedArticles && (
+              <>
+                {loadingArticles ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div key={index} className="card animate-pulse">
+                        <div className="aspect-video bg-gray-200 rounded-t-lg"></div>
+                        <div className="p-6">
+                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
+                          <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {articles.map((article) => (
+                        <ArticleCard
+                          key={article.id}
+                          article={article}
+                          onArticleClick={handleArticleClick}
+                          isLoading={loadingArticleId === article.id}
+                        />
+                      ))}
+                    </div>
+
+                    {articles.length === 0 && (
+                      <div className="text-center py-12">
+                        <Newspaper className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No articles found</h3>
+                        <p className="text-gray-600">
+                          Try fetching news or selecting a different category.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Pagination */}
+            {hasLoadedArticles && totalPages > 1 && !loadingArticles && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                totalItems={totalArticles}
+                itemsPerPage={itemsPerPage}
+              />
+            )}
+          </>
         )}
 
-        {/* Articles Grid */}
-        {hasLoadedArticles && (
+        {/* Search Results Content */}
+        {activeTab === 'google' && (
           <>
-            {loadingArticles ? (
+            {isSearching ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <div key={index} className="card animate-pulse">
@@ -430,10 +569,10 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : searchQuery ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {articles.map((article) => (
+                  {searchResults.map((article) => (
                     <ArticleCard
                       key={article.id}
                       article={article}
@@ -443,29 +582,37 @@ export default function HomePage() {
                   ))}
                 </div>
 
-                {articles.length === 0 && (
+                {searchResults.length === 0 && (
                   <div className="text-center py-12">
-                    <Newspaper className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No articles found</h3>
+                    <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No search results found</h3>
                     <p className="text-gray-600">
-                      Try fetching news or selecting a different category.
+                      Try a different search term or category.
                     </p>
                   </div>
                 )}
+
+                {/* Search Pagination */}
+                {searchTotal > 12 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={Math.ceil(searchTotal / 12)}
+                    onPageChange={handleSearchPageChange}
+                    totalItems={searchTotal}
+                    itemsPerPage={12}
+                  />
+                )}
               </>
+            ) : (
+              <div className="text-center py-12">
+                <Search className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-gray-900 mb-2">Search Articles</h3>
+                <p className="text-gray-600 mb-6">
+                  Use the search bar above to find articles in your local database.
+                </p>
+              </div>
             )}
           </>
-        )}
-
-        {/* Pagination */}
-        {hasLoadedArticles && totalPages > 1 && !loadingArticles && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            totalItems={totalArticles}
-            itemsPerPage={itemsPerPage}
-          />
         )}
       </main>
 

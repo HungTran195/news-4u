@@ -3,11 +3,16 @@ News API routes for fetching articles and managing RSS feeds.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+import logging
 from sqlalchemy import func
 from models.database import NewsArticle, RawFeedData, FeedFetchLog, RSSFeed
+
+class ContentExtractionRequest(BaseModel):
+    url: str
 
 from database import get_db
 from services.rss_service import RSSService
@@ -21,6 +26,7 @@ from schemas.news import (
 from config.rss_feeds import NewsCategory, get_all_feeds
 
 router = APIRouter(prefix="/api/news", tags=["news"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health", response_model=HealthCheckResponse)
@@ -167,6 +173,36 @@ async def get_fetch_logs(
     return logs
 
 
+@router.get("/feeds/status")
+async def get_feeds_status(db: Session = Depends(get_db)):
+    """Get status and last fetch time for all feeds."""
+    from models.database import FeedFetchLog, RSSFeed
+    
+    # Get all feeds
+    feeds = db.query(RSSFeed).all()
+    
+    # Get latest fetch log for each feed
+    feed_status = []
+    for feed in feeds:
+        latest_log = db.query(FeedFetchLog).filter(
+            FeedFetchLog.feed_name == feed.name
+        ).order_by(
+            FeedFetchLog.fetch_timestamp.desc()
+        ).first()
+        
+        feed_status.append({
+            "name": feed.name,
+            "category": feed.category,
+            "is_active": feed.is_active,
+            "last_fetch": latest_log.fetch_timestamp if latest_log else None,
+            "last_status": latest_log.status if latest_log else None,
+            "last_articles_found": latest_log.articles_found if latest_log else 0,
+            "last_articles_processed": latest_log.articles_processed if latest_log else 0
+        })
+    
+    return feed_status
+
+
 @router.post("/fetch")
 async def fetch_all_feeds(db: Session = Depends(get_db)):
     """Manually trigger fetching of all RSS feeds."""
@@ -174,6 +210,32 @@ async def fetch_all_feeds(db: Session = Depends(get_db)):
     result = await service.fetch_all_feeds()
     return {
         "message": "Feed fetching completed",
+        "result": result
+    }
+
+
+@router.post("/fetch/{feed_name}")
+async def fetch_specific_feed(feed_name: str, db: Session = Depends(get_db)):
+    """Manually trigger fetching of a specific RSS feed."""
+    from config.rss_feeds import get_all_feeds
+    
+    # Find the feed by name
+    feeds = get_all_feeds()
+    target_feed = None
+    for feed in feeds:
+        if feed.name.lower() == feed_name.lower():
+            target_feed = feed
+            break
+    
+    if not target_feed:
+        raise HTTPException(status_code=404, detail=f"Feed '{feed_name}' not found")
+    
+    service = RSSService(db)
+    result = await service.fetch_feed_async(target_feed)
+    
+    return {
+        "message": f"Feed '{feed_name}' fetching completed",
+        "feed_name": feed_name,
         "result": result
     }
 
@@ -243,6 +305,44 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
         }
     else:
         raise HTTPException(status_code=500, detail="Failed to extract content")
+
+
+@router.post("/extract-content", response_model=Dict[str, Any])
+async def extract_content_from_url(
+    request: ContentExtractionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Extract content and images from any URL for testing purposes.
+    """
+    try:
+        rss_service = RSSService(db)
+        
+        # Extract content and images
+        content, images = await rss_service._extract_article_content_and_images(request.url)
+        
+        # Count embedded images in content
+        embedded_image_count = 0
+        if content:
+            embedded_image_count = content.count('[IMAGE:')
+        
+        return {
+            "success": True,
+            "url": request.url,
+            "content": content,
+            "content_length": len(content) if content else 0,
+            "embedded_images": embedded_image_count,
+            "standalone_images": images,
+            "standalone_image_count": len(images),
+            "extracted_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error extracting content from {request.url}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract content: {str(e)}"
+        )
 
 
 @router.delete("/cleanup/all")
@@ -323,15 +423,74 @@ async def search_google_news(
     category: str = "all",
     time_filter: str = "24h",
     max_results: int = 50,
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
     db: Session = Depends(get_db)
 ):
-    """Search Google News and save results to database."""
-    from services.google_news_service import GoogleNewsService
+    """Search articles in local database by title, summary, and content."""
+    from models.database import NewsArticle
+    from sqlalchemy import or_, and_
     
-    service = GoogleNewsService(db)
-    result = await service.fetch_and_save_google_news(query, category, time_filter, max_results)
+    # Build the base query
+    base_query = db.query(NewsArticle)
     
-    return result
+    # Apply search filter if query is provided
+    if query and query.strip():
+        search_term = f"%{query.strip()}%"
+        base_query = base_query.filter(
+            or_(
+                NewsArticle.title.ilike(search_term),
+                NewsArticle.summary.ilike(search_term),
+                NewsArticle.content.ilike(search_term)
+            )
+        )
+    
+    # Apply category filter if not "all"
+    if category and category != "all":
+        base_query = base_query.filter(NewsArticle.category == category)
+    
+    # Apply time filter
+    if time_filter and time_filter != "all":
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        if time_filter == "1h":
+            time_limit = now - timedelta(hours=1)
+        elif time_filter == "24h":
+            time_limit = now - timedelta(days=1)
+        elif time_filter == "7d":
+            time_limit = now - timedelta(days=7)
+        elif time_filter == "30d":
+            time_limit = now - timedelta(days=30)
+        else:
+            time_limit = now - timedelta(days=1)  # Default to 24h
+        
+        base_query = base_query.filter(NewsArticle.published_date >= time_limit)
+    
+    # Get total count for pagination
+    total = base_query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    articles = base_query.order_by(
+        NewsArticle.published_date.desc().nullslast(),
+        NewsArticle.created_at.desc()
+    ).offset(offset).limit(per_page).all()
+    
+    # Calculate total pages
+    total_pages = (total + per_page - 1) // per_page
+    
+    return {
+        "status": "success",
+        "articles": articles,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "query": query,
+        "category": category,
+        "time_filter": time_filter
+    }
 
 
 @router.get("/google-news/search")

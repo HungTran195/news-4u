@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
 import { formatDate, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
 import { ExternalLink, Download, ArrowLeft, Loader2 } from 'lucide-react';
+import ArticleContent from './ArticleContent';
 
 interface ArticleDetailProps {
   article: NewsArticle;
@@ -120,9 +121,7 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
         {hasContent ? (
           <div className="prose max-w-none">
             {showFullContent ? (
-              <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                {article.content}
-              </div>
+              <ArticleContent content={article.content || ''} />
             ) : (
               <div>
                 <div className="whitespace-pre-wrap text-gray-700 leading-relaxed mb-4">

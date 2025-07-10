@@ -11,6 +11,7 @@ import time
 from bs4 import BeautifulSoup
 import re
 import trafilatura
+from newspaper import Article, Config
 
 from config.rss_feeds import RSSFeed, get_all_feeds, NewsCategory
 from models.database import RSSFeed as RSSFeedModel, RawFeedData, NewsArticle, FeedFetchLog
@@ -290,8 +291,233 @@ class RSSService:
 
     async def _extract_article_content_and_images(self, article_url: str) -> tuple[Optional[str], list[str]]:
         """
-        Extract full article content and images from the original website.
+        Extract full article content and images using Newspaper3k.
         Returns tuple of (content_text, image_urls)
+        """
+        try:
+            # Configure Newspaper3k
+            config = Config()
+            config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            config.request_timeout = 15
+            config.fetch_images = True
+            config.memoize_articles = False
+            
+            # Create article object
+            article = Article(article_url, config=config)
+            
+            # Download and parse
+            article.download()
+            article.parse()
+            
+            # Extract text content with embedded images
+            content = self._extract_content_with_images(article, article_url)
+            
+            # Extract standalone images for the image_url field
+            images = []
+            
+            # Get top images from article
+            if hasattr(article, 'top_image') and article.top_image:
+                images.append(article.top_image)
+            
+            # Get all images (limit to 5)
+            if hasattr(article, 'images') and article.images:
+                # Filter and add unique images
+                seen = set()
+                for img in article.images:
+                    if img and img not in seen and self._is_valid_newspaper_image(img):
+                        seen.add(img)
+                        images.append(img)
+                        if len(images) >= 5:  # Limit to 5 images
+                            break
+            
+            # Fallback to meta images if no images found
+            if not images and hasattr(article, 'meta_img') and article.meta_img:
+                images.append(article.meta_img)
+            
+            return content, images
+            
+        except Exception as e:
+            print(f"Error extracting content with Newspaper3k from {article_url}: {e}")
+            # Fallback to original method
+            return await self._extract_article_content_fallback(article_url)
+
+    def _extract_content_with_images(self, article, article_url: str) -> Optional[str]:
+        """
+        Extract content with embedded images from Newspaper3k article.
+        """
+        try:
+            # Get the raw HTML content
+            if hasattr(article, 'html') and article.html:
+                soup = BeautifulSoup(article.html, 'html.parser')
+                
+                # Find the main content area
+                content_area = self._find_main_content_area(soup)
+                
+                if content_area:
+                    # Extract text with embedded images
+                    content_with_images = self._extract_text_with_images(content_area, article_url)
+                    if content_with_images:
+                        return self._clean_extracted_content(content_with_images)
+            
+            # Fallback to plain text if HTML extraction fails
+            if hasattr(article, 'text') and article.text:
+                return self._clean_extracted_content(article.text)
+                
+        except Exception as e:
+            print(f"Error extracting content with images: {e}")
+        
+        return None
+
+    def _find_main_content_area(self, soup: BeautifulSoup):
+        """
+        Find the main content area in the HTML.
+        """
+        # Remove unwanted elements
+        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
+            element.decompose()
+        
+        # Try to find main content areas
+        content_selectors = [
+            'article',
+            '[class*="content"]',
+            '[class*="article"]',
+            '[class*="post"]',
+            '[class*="entry"]',
+            'main',
+            '.entry-content',
+            '.post-content',
+            '.article-content',
+            '.story-content',
+            '.content-body'
+        ]
+        
+        for selector in content_selectors:
+            content = soup.select_one(selector)
+            if content and len(content.get_text(strip=True)) > 500:
+                return content
+        
+        # If no specific content area found, return body
+        return soup.find('body')
+
+    def _extract_text_with_images(self, content_area, base_url: str) -> str:
+        """
+        Extract text content with embedded image references.
+        """
+        if not content_area:
+            return ""
+        
+        # Process the content area to extract text and images
+        content_parts = []
+        
+        # Process each element in the content area
+        for element in content_area.find_all(['p', 'div', 'img', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+            if element.name == 'img':
+                # Handle image element
+                img_src = element.get('src') or element.get('data-src') or element.get('data-lazy-src')
+                if img_src:
+                    # Convert to absolute URL
+                    img_src = self._make_absolute_url(img_src, base_url)
+                    if self._is_valid_content_image(img_src):
+                        # Add image reference to content
+                        alt_text = element.get('alt', '')
+                        content_parts.append(f"\n[IMAGE: {img_src}]\n")
+                        if alt_text:
+                            content_parts.append(f"[Image description: {alt_text}]\n")
+            elif element.name == 'figure':
+                # Handle figure element (often contains images with captions)
+                img = element.find('img')
+                if img:
+                    img_src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+                    if img_src:
+                        img_src = self._make_absolute_url(img_src, base_url)
+                        if self._is_valid_content_image(img_src):
+                            content_parts.append(f"\n[IMAGE: {img_src}]\n")
+                            # Add caption if available
+                            figcaption = element.find('figcaption')
+                            if figcaption:
+                                caption_text = figcaption.get_text(strip=True)
+                                if caption_text:
+                                    content_parts.append(f"[Image caption: {caption_text}]\n")
+            else:
+                # Handle text elements
+                text = element.get_text(strip=True)
+                if text:
+                    content_parts.append(text + "\n")
+        
+        return " ".join(content_parts)
+
+    def _make_absolute_url(self, url: str, base_url: str) -> str:
+        """
+        Convert relative URL to absolute URL.
+        """
+        if not url:
+            return ""
+        
+        if url.startswith('//'):
+            return 'https:' + url
+        elif url.startswith('/'):
+            from urllib.parse import urljoin
+            return urljoin(base_url, url)
+        elif not url.startswith(('http://', 'https://')):
+            from urllib.parse import urljoin
+            return urljoin(base_url, url)
+        
+        return url
+
+    def _is_valid_content_image(self, image_url: str) -> bool:
+        """
+        Check if an image URL is valid for content embedding.
+        """
+        if not image_url or len(image_url) < 10:
+            return False
+        
+        # Skip data URIs
+        if image_url.startswith('data:'):
+            return False
+        
+        # Skip common unwanted patterns
+        unwanted_patterns = [
+            'avatar', 'icon', 'logo', 'banner', 'ad', 'advertisement',
+            'social', 'share', 'facebook', 'twitter', 'instagram',
+            'pixel', 'tracking', 'analytics', '1x1', 'blank',
+            'spacer', 'clear', 'transparent'
+        ]
+        
+        image_url_lower = image_url.lower()
+        for pattern in unwanted_patterns:
+            if pattern in image_url_lower:
+                return False
+        
+        return True
+
+    def _is_valid_newspaper_image(self, image_url: str) -> bool:
+        """
+        Check if a Newspaper3k image URL is valid.
+        """
+        if not image_url or len(image_url) < 10:
+            return False
+        
+        # Skip data URIs
+        if image_url.startswith('data:'):
+            return False
+        
+        # Skip common unwanted patterns
+        unwanted_patterns = [
+            'avatar', 'icon', 'logo', 'banner', 'ad', 'advertisement',
+            'social', 'share', 'facebook', 'twitter', 'instagram',
+            'pixel', 'tracking', 'analytics', '1x1', 'blank'
+        ]
+        
+        image_url_lower = image_url.lower()
+        for pattern in unwanted_patterns:
+            if pattern in image_url_lower:
+                return False
+        
+        return True
+
+    async def _extract_article_content_fallback(self, article_url: str) -> tuple[Optional[str], list[str]]:
+        """
+        Fallback content extraction method using BeautifulSoup.
         """
         try:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -341,13 +567,13 @@ class RSSService:
                     return self._clean_extracted_content(text), image_urls
                 
         except Exception as e:
-            print(f"Error extracting content from {article_url}: {e}")
+            print(f"Error in fallback extraction from {article_url}: {e}")
         
         return None, []
 
     def _extract_images_from_soup(self, soup: BeautifulSoup, base_url: str) -> list[str]:
         """
-        Extract image URLs from BeautifulSoup object.
+        Extract image URLs from BeautifulSoup object (fallback method).
         """
         image_urls = []
         
