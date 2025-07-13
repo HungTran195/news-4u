@@ -11,6 +11,9 @@ const nextConfig = {
       },
     ];
   },
+  // Ensure proper output for Netlify
+  trailingSlash: false,
+  generateEtags: false,
 };
 
 module.exports = nextConfig; 
