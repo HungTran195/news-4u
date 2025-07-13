@@ -56,7 +56,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Frontend URLs
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://news-4u.onrender.com",  # Render frontend URL
+        "https://news-4u-frontend.onrender.com"  # Alternative Render URL format
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

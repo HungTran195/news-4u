@@ -4,11 +4,12 @@ Database configuration and session management.
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from typing import Generator
 import os
 from pathlib import Path
 
 # Database URL
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/news_4u")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./news_4u.db")
 
 # Create engine
 engine = create_engine(
@@ -22,7 +23,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def get_db() -> Session:
+def get_db() -> Generator[Session, None, None]:
     """
     Dependency to get database session.
     """
