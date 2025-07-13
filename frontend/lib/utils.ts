@@ -45,11 +45,11 @@ export function formatRelativeTime(dateString: string): string {
 
 export function getCategoryColor(category: string): string {
   const colors: Record<string, string> = {
-    'tech': 'bg-blue-100 text-blue-800',
-    'finance': 'bg-green-100 text-green-800',
-    'global_news': 'bg-purple-100 text-purple-800',
-    'vietnam_news': 'bg-red-100 text-red-800',
-    'default': 'bg-gray-100 text-gray-800'
+    'tech': 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200',
+    'finance': 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200',
+    'global_news': 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200',
+    'vietnam_news': 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200',
+    'default': 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
   };
   return colors[category] || colors['default'];
 }
@@ -96,4 +96,10 @@ export function formatDate(dateString: string): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+export function calculateReadTime(content: string): number {
+  const wordsPerMinute = 200;
+  const words = content.trim().split(/\s+/).length;
+  return Math.ceil(words / wordsPerMinute);
 } 

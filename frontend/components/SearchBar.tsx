@@ -32,7 +32,7 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
   const hasActiveFilters = query || category !== 'all' || timeFilter !== '24h';
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6">
       <form onSubmit={handleSearch} className="space-y-4">
         {/* Search Input */}
         <div className="relative">
@@ -41,8 +41,8 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Google News..."
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Search anything..."
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
             disabled={isLoading}
           />
           {query && (
@@ -61,7 +61,7 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors"
+            className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           >
             <Filter className="h-4 w-4" />
             <span>Filters</span>
@@ -72,7 +72,7 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
               <button
                 type="button"
                 onClick={handleClear}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
               >
                 Clear
               </button>
@@ -89,16 +89,16 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
 
         {/* Filters */}
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             {/* Category Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Category
               </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="all">All Categories</option>
                 <option value="tech">Technology</option>
@@ -113,13 +113,13 @@ export default function SearchBar({ onSearch, onClear, isLoading = false }: Sear
 
             {/* Time Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Time Range
               </label>
               <select
                 value={timeFilter}
                 onChange={(e) => setTimeFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="1h">Last hour</option>
                 <option value="24h">Last 24 hours</option>

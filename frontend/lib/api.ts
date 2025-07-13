@@ -1,16 +1,7 @@
 import axios from 'axios';
 
-// Debug logging for environment variables
-console.log('🔍 Environment Variable Debug:');
-console.log('  process.env.NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
-console.log('  process.env.NODE_ENV:', process.env.NODE_ENV);
-console.log('  typeof process.env.NEXT_PUBLIC_API_URL:', typeof process.env.NEXT_PUBLIC_API_URL);
-console.log('  process.env keys containing API:', Object.keys(process.env).filter(key => key.includes('API')));
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-console.log('🔍 Final API_BASE_URL:', API_BASE_URL);
-console.log('🔍 API_BASE_URL type:', typeof API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -23,10 +14,6 @@ const api = axios.create({
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
-    console.log('🚀 API Request Debug:');
-    console.log('  Full URL:', (config.baseURL || '') + (config.url || ''));
-    console.log('  Method:', config.method?.toUpperCase());
-    console.log('  Params:', config.params);
     return config;
   },
   (error) => {
@@ -38,9 +25,6 @@ api.interceptors.request.use(
 // Add response interceptor for debugging
 api.interceptors.response.use(
   (response) => {
-    console.log('✅ API Response Debug:');
-    console.log('  Status:', response.status);
-    console.log('  URL:', response.config.url);
     return response;
   },
   (error) => {
@@ -213,7 +197,6 @@ export const newsApi = {
   // Get stats
   getStats: async (): Promise<Stats> => {
     const response = await api.get('/api/news/stats');
-    console.log(response.data);
     return response.data;
   },
 
