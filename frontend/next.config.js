@@ -14,6 +14,11 @@ const nextConfig = {
   // Ensure proper output for Netlify
   trailingSlash: false,
   generateEtags: false,
+  // Enable standalone output for Docker
+  output: 'standalone',
+  // Memory optimization
+  swcMinify: true,
+  compress: true,
 };
 
 module.exports = nextConfig; 
