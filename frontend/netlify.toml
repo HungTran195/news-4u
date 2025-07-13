@@ -10,7 +10,7 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "https://your-backend-domain.com/api/:splat"
+  to = "https://news4yu.netlify.app/"
   status = 200
   force = true
 

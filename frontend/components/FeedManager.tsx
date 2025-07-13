@@ -242,9 +242,9 @@ export default function FeedManager({ onFeedFetchComplete }: FeedManagerProps) {
                         Last: {new Date(feedStatus[feed.name]?.lastFetch || '').toLocaleString()}
                       </div>
                     )}
-                    {feedStatus[feed.name]?.articlesProcessed > 0 && (
+                    {(feedStatus[feed.name]?.articlesProcessed || 0) > 0 && (
                       <div className="text-xs text-gray-600">
-                        {feedStatus[feed.name].articlesProcessed} articles
+                        {feedStatus[feed.name]?.articlesProcessed || 0} articles
                       </div>
                     )}
                   </div>

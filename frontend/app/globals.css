@@ -2,6 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Article HTML Content Styles */
+.article-html-content {
+  @apply text-gray-800 leading-relaxed;
+}
+
+.article-html-content h1,
+.article-html-content h2,
+.article-html-content h3,
+.article-html-content h4,
+.article-html-content h5,
+.article-html-content h6 {
+  @apply font-bold text-gray-900 mb-4 mt-6;
+}
+
+.article-html-content h1 {
+  @apply text-2xl;
+}
+
+.article-html-content h2 {
+  @apply text-xl;
+}
+
+.article-html-content h3 {
+  @apply text-lg;
+}
+
+.article-html-content p {
+  @apply mb-4 leading-relaxed;
+}
+
+.article-html-content div {
+  @apply mb-2;
+}
+
+.article-html-content ul,
+.article-html-content ol {
+  @apply mb-4 pl-6;
+}
+
+.article-html-content li {
+  @apply mb-1;
+}
+
+.article-html-content blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-4;
+}
+
+.article-html-content img {
+  @apply max-w-full h-auto rounded-lg shadow-md my-4;
+}
+
+.article-html-content a {
+  @apply text-blue-600 hover:text-blue-800 underline;
+}
+
+.article-html-content strong,
+.article-html-content b {
+  @apply font-bold;
+}
+
+.article-html-content em,
+.article-html-content i {
+  @apply italic;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @layer base {

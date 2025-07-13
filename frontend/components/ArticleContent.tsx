@@ -18,9 +18,20 @@ export default function ArticleContent({ content }: ArticleContentProps) {
     );
   }
 
+  // Check if content is HTML
+  const isHtmlContent = (content: string) => {
+    return content.includes('<') && content.includes('>') && 
+           (content.includes('<div') || content.includes('<p') || content.includes('<h'));
+  };
+
   // Parse content to extract text and embedded images
   const parseContent = (content: string) => {
-    const parts: Array<{ type: 'text' | 'image'; content: string; alt?: string; caption?: string }> = [];
+    // If it's HTML content, return it as-is
+    if (isHtmlContent(content)) {
+      return [{ type: 'html' as const, content }];
+    }
+    
+    const parts: Array<{ type: 'text' | 'image' | 'html'; content: string; alt?: string; caption?: string }> = [];
     
     // Split content by image markers
     const segments = content.split(/(\[IMAGE: [^\]]+\])/);
@@ -81,7 +92,16 @@ export default function ArticleContent({ content }: ArticleContentProps) {
   return (
     <div className="prose prose-lg max-w-none">
       {contentParts.map((part, index) => {
-        if (part.type === 'image') {
+        if (part.type === 'html') {
+          // HTML content - render as-is with styling
+          return (
+            <div 
+              key={index} 
+              className="article-html-content"
+              dangerouslySetInnerHTML={{ __html: part.content }}
+            />
+          );
+        } else if (part.type === 'image') {
           const isExpanded = expandedImages.has(part.content);
           
           return (

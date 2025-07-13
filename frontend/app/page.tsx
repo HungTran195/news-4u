@@ -11,7 +11,7 @@ import Pagination from '@/components/Pagination';
 import FeedSelector from '@/components/FeedSelector';
 import FeedManager from '@/components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
-import ContentExtractionTest from '@/components/ContentExtractionTest';
+
 
 export default function HomePage() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
@@ -110,10 +110,10 @@ export default function HomePage() {
     }
   };
 
-  const handleFetchFeeds = async () => {
+  const handleFetchFeeds = async (redoExtraction: boolean = false) => {
     try {
       setFetching(true);
-      await newsApi.fetchFeeds();
+      await newsApi.fetchFeeds(redoExtraction);
       await loadStats(); // Reload stats after fetching
       if (hasLoadedArticles) {
         await loadArticles(); // Reload articles if they were already loaded
@@ -282,12 +282,20 @@ export default function HomePage() {
                 onFeedFetchComplete={handleFeedFetchComplete}
               />
               <button
-                onClick={handleFetchFeeds}
+                onClick={() => handleFetchFeeds(false)}
                 disabled={fetching}
                 className="btn btn-primary px-4 py-2"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${fetching ? 'animate-spin' : ''}`} />
                 {fetching ? 'Fetching...' : 'Fetch All'}
+              </button>
+              <button
+                onClick={() => handleFetchFeeds(true)}
+                disabled={fetching}
+                className="btn btn-orange px-4 py-2"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${fetching ? 'animate-spin' : ''}`} />
+                {fetching ? 'Redoing...' : 'Redo Extraction'}
               </button>
               <button
                 onClick={() => setShowCleanupModal(true)}
@@ -417,7 +425,12 @@ export default function HomePage() {
 
       {/* Content Extraction Test */}
       {activeTab === 'test' && (
-        <ContentExtractionTest />
+        <div className="text-center py-12">
+          <h3 className="text-xl font-medium text-gray-900 mb-2">Content Extraction Test</h3>
+          <p className="text-gray-600">
+            This feature is temporarily disabled.
+          </p>
+        </div>
       )}
 
       {/* Category Filter (RSS Tab) */}
@@ -464,6 +477,16 @@ export default function HomePage() {
                 }`}
               >
                 🌍 Global News
+              </button>
+              <button
+                onClick={() => setSelectedCategory('vietnam_news')}
+                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
+                  selectedCategory === 'vietnam_news'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                🇻🇳 Vietnam News
               </button>
             </div>
           </div>
