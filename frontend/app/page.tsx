@@ -11,6 +11,7 @@ import Pagination from '@/components/Pagination';
 import FeedSelector from '@/components/FeedSelector';
 import FeedManager from '@/components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
+import DebugEnv from '@/components/DebugEnv';
 
 
 export default function HomePage() {
@@ -645,6 +646,9 @@ export default function HomePage() {
         onClose={() => setShowCleanupModal(false)}
         onCleanupComplete={handleCleanupComplete}
       />
+
+      {/* Debug Environment Variables (Development Only) */}
+      <DebugEnv />
     </div>
   );
 } 

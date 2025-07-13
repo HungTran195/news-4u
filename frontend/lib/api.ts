@@ -1,6 +1,16 @@
 import axios from 'axios';
 
+// Debug logging for environment variables
+console.log('🔍 Environment Variable Debug:');
+console.log('  process.env.NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+console.log('  process.env.NODE_ENV:', process.env.NODE_ENV);
+console.log('  typeof process.env.NEXT_PUBLIC_API_URL:', typeof process.env.NEXT_PUBLIC_API_URL);
+console.log('  process.env keys containing API:', Object.keys(process.env).filter(key => key.includes('API')));
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+console.log('🔍 Final API_BASE_URL:', API_BASE_URL);
+console.log('🔍 API_BASE_URL type:', typeof API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -9,6 +19,38 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  (config) => {
+    console.log('🚀 API Request Debug:');
+    console.log('  Full URL:', (config.baseURL || '') + (config.url || ''));
+    console.log('  Method:', config.method?.toUpperCase());
+    console.log('  Params:', config.params);
+    return config;
+  },
+  (error) => {
+    console.error('❌ API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response Debug:');
+    console.log('  Status:', response.status);
+    console.log('  URL:', response.config.url);
+    return response;
+  },
+  (error) => {
+    console.error('❌ API Response Error:');
+    console.error('  Status:', error.response?.status);
+    console.error('  URL:', error.config?.url);
+    console.error('  Message:', error.message);
+    return Promise.reject(error);
+  }
+);
 
 // Types
 export interface NewsArticle {
