@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
@@ -9,6 +10,31 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  (config) => {
+    return config;
+  },
+  (error) => {
+    console.error('❌ API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    console.error('❌ API Response Error:');
+    console.error('  Status:', error.response?.status);
+    console.error('  URL:', error.config?.url);
+    console.error('  Message:', error.message);
+    return Promise.reject(error);
+  }
+);
 
 // Types
 export interface NewsArticle {
@@ -171,7 +197,6 @@ export const newsApi = {
   // Get stats
   getStats: async (): Promise<Stats> => {
     const response = await api.get('/api/news/stats');
-    console.log(response.data);
     return response.data;
   },
 
