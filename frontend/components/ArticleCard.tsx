@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
-import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { calculateReadTime, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
+import { ExternalLink, Loader2, Clock } from 'lucide-react';
 
 interface ArticleCardProps {
   article: NewsArticle;
@@ -13,7 +13,8 @@ interface ArticleCardProps {
 
 export default function ArticleCard({ article, onArticleClick, isLoading = false }: ArticleCardProps) {
   const [imageError, setImageError] = useState(false);
-
+  const hasContent = article.content && article.content.length > 0;
+  const readTime = hasContent && article.content ? calculateReadTime(article.content) : 0;
   const handleClick = () => {
     if (!isLoading) {
       onArticleClick(article);
@@ -63,26 +64,22 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
           </p>
         )}
         
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300 ">
           <div className="flex items-center space-x-2">
             <span className="text-lg">{getSourceIcon(article.source_name)}</span>
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{article.source_name}</span>
+            <span >{article.source_name}</span>
           </div>
           
           <div className="flex items-center space-x-2">
             {isLoading && (
               <Loader2 className="h-4 w-4 text-primary-600 animate-spin" />
             )}
-            <a
-              href={article.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="h-3 w-3 mr-1" />
-              Read More
-            </a>
+            {hasContent && readTime > 0 && (
+            <div className="flex items-center space-x-2">
+              <Clock className="h-4 w-4" />
+              <span>{readTime} min read</span>
+            </div>
+          )}
           </div>
         </div>
       </div>

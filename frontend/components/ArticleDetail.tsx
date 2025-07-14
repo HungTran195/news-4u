@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
-import { formatDate, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon, calculateReadTime } from '@/lib/utils';
-import { ExternalLink, Loader2, Clock, Calendar } from 'lucide-react';
+import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon, calculateReadTime } from '@/lib/utils';
+import { ExternalLink, Loader2 } from 'lucide-react';
 import ArticleContent from './ArticleContent';
 
 interface ArticleDetailProps {
@@ -29,12 +29,11 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
   };
 
   const hasContent = article.content && article.content.length > 0;
-  const readTime = hasContent && article.content ? calculateReadTime(article.content) : 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto sm:px-2 md:px-4 lg:px-6 lg:py-6 dark:text-gray-300">
       {/* Article Header and Image Section */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 lg:p-6 mb-2">
         <div className="flex items-center justify-between mb-4">
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${getCategoryColor(article.category)}`}>
             {getCategoryIcon(article.category)} {article.category.replace('_', ' ')}
@@ -44,7 +43,7 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
           </span>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">{article.title}</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">{article.title}</h1>
 
         {article.summary && (
           <p className="text-lg text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">{article.summary}</p>
@@ -52,7 +51,7 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
 
         {/* Article Image */}
         {article.image_url && (
-          <div className="mb-6">
+          <div className="mb-2 sm:mb-4">
             <a
               href={article.image_url}
               target="_blank"
@@ -72,47 +71,23 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
         )}
 
         {/* Article Details */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-4">
+        <div className="items-center ">
+          <div className="flex items-center justify-between space-x-4">
             <div className="flex items-center space-x-2">
               <span className="text-xl">{getSourceIcon(article.source_name)}</span>
               <span className="font-medium text-gray-700 dark:text-gray-300">{article.source_name}</span>
             </div>
             {article.author && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">by {article.author}</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">By {article.author}</span>
             )}
           </div>
 
-          <a
-            href={article.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center text-primary-600 hover:text-primary-700 font-medium"
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Read Original
-          </a>
-        </div>
-
-        {/* Published Date and Read Time */}
-        <div className="flex items-center space-x-6 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600 pt-4">
-          {article.published_date && (
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4" />
-              <span>Published: {formatDate(article.published_date)}</span>
-            </div>
-          )}
-          {hasContent && readTime > 0 && (
-            <div className="flex items-center space-x-2">
-              <Clock className="h-4 w-4" />
-              <span>{readTime} min read</span>
-            </div>
-          )}
-        </div>
+          
+        </div>       
       </div>
 
       {/* Article Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 lg:p-6">
         {hasContent ? (
           <div className="prose max-w-none">
             <ArticleContent content={article.content || ''} />
@@ -140,6 +115,17 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
             )}
           </div>
         )}
+      <div className="flex justify-center text-md text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600 pt-4">
+          <a
+            href={article.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center text-primary-600 hover:text-primary-700 font-medium text-sm sm:text-base"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Read Original
+          </a>
+        </div>
       </div>
     </div>
   );
