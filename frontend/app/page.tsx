@@ -5,13 +5,10 @@ import { newsApi, NewsArticle, Stats } from '@/lib/api';
 import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
 import { Newspaper, Search } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
-import CleanupModal from '@/components/CleanupModal';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
 import FeedSelector from '@/components/FeedSelector';
 import ArticleCard from '@/components/ArticleCard';
-import DebugEnv from '@/components/DebugEnv';
-import StatsCard from '@/components/StatsCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
 
 export default function HomePage() {
@@ -235,7 +232,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header - Always visible */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-6">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-3">
               <button
@@ -251,7 +248,6 @@ export default function HomePage() {
                 selectedFeeds={selectedFeeds}
                 onFeedSelectionChange={handleFeedSelectionChange}
               />
-              <StatsCard stats={stats} />
               <DarkModeToggle />
             </div>
           </div>
@@ -388,7 +384,7 @@ export default function HomePage() {
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto">
         {/* Show article detail view if an article is selected */}
         {selectedArticle ? (
           <ArticleDetail
@@ -439,6 +435,7 @@ export default function HomePage() {
                       </div>
                     ) : (
                       <>
+                      <div className="px-4 xs:px-2 sm:px-6 lg:px-8 py-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {articles.map((article) => (
                             <ArticleCard
@@ -449,6 +446,7 @@ export default function HomePage() {
                             />
                           ))}
                         </div>
+                      </div>
 
                         {articles.length === 0 && (
                           <div className="text-center py-12">
@@ -543,16 +541,6 @@ export default function HomePage() {
           </>
         )}
       </main>
-
-      {/* Cleanup Modal */}
-      <CleanupModal
-        isOpen={showCleanupModal}
-        onClose={() => setShowCleanupModal(false)}
-        onCleanupComplete={handleCleanupComplete}
-      />
-
-      {/* Debug Environment Variables (Development Only) */}
-      <DebugEnv />
     </div>
   );
 } 

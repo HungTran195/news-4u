@@ -98,7 +98,7 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
       </button>
 
       {showSelector && (
-        <div className="absolute top-full left-0 mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg z-10">
+        <div className="absolute top-full mt-1 w-80 bg-white border border-gray-300 rounded-md shadow-lg z-10" style={{ left: '-100%' }}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">Select Feeds</h3>
