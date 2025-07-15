@@ -1,16 +1,12 @@
 # News 4U Backend
 
-FastAPI backend for the News 4U RSS aggregator with PostgreSQL database.
+FastAPI backend for the News 4U RSS aggregator with SQLite database.
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.9+
 - pip
-
-### Prerequisites
-- PostgreSQL 12+ installed and running
-- Database `news_4u` created
 
 ### Installation
 ```bash
@@ -23,21 +19,11 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up database (create database first)
-createdb news_4u
-
-# Run database migrations
-alembic upgrade head
-
-# Initialize database with RSS feeds
-python scripts/init_db.py
-
 # Start the server (Option 1: Using the startup script)
 ./start.sh
 
 # OR start manually (Option 2: Manual commands)
 source venv/bin/activate
-export DATABASE_URL="postgresql://postgres:password@localhost:5432/news_4u"
 uvicorn main:app --reload
 ```
 
@@ -49,7 +35,6 @@ The API will be available at http://localhost:8000
 
 ```text
 backend/
-├── alembic/           # Database migration scripts (Alembic)
 ├── config/            # Configuration files (e.g., RSS feed sources)
 ├── models/            # SQLAlchemy ORM models (database tables)
 ├── routers/           # FastAPI route definitions (API endpoints)
@@ -58,7 +43,6 @@ backend/
 ├── scripts/           # Utility scripts (DB setup, initialization)
 ├── __pycache__/       # Python bytecode cache (auto-generated)
 ├── venv/              # Python virtual environment (local, not in repo)
-├── alembic.ini        # Alembic configuration file
 ├── requirements.txt   # Python dependencies
 ├── Dockerfile         # Docker build file
 ├── main.py            # FastAPI application entry point
@@ -68,13 +52,12 @@ backend/
 
 ### Folder & File Usage
 
-- **alembic/**: Auto-generated migration scripts for evolving the database schema. Used with Alembic.
 - **config/**: Centralized configuration, e.g., `rss_feeds.py` lists all RSS sources and categories.
 - **models/**: SQLAlchemy ORM models. Each file defines tables and relationships (e.g., `database.py`).
 - **routers/**: FastAPI API endpoints. Main API logic is in `news.py`.
 - **schemas/**: Pydantic models for validating and serializing API requests and responses.
 - **services/**: Core business logic, such as fetching/parsing RSS feeds (`rss_service.py`) and Google News integration (`google_news_service.py`).
-- **scripts/**: Utility scripts for database setup and initialization (e.g., `init_db.py`, `setup_postgres.py`).
+- **scripts/**: Utility scripts for database setup and initialization (e.g., `init_db.py`).
 - **main.py**: FastAPI app entry point. Includes app setup, middleware, and router registration.
 - **database.py**: Sets up the SQLAlchemy engine, session, and database initialization logic.
 - **requirements.txt**: Lists all Python dependencies for the backend.
@@ -85,56 +68,7 @@ backend/
 
 ## Database Access
 
-### PostgreSQL Shell Access
-
-To access the database directly and execute queries:
-
-```bash
-# Connect to PostgreSQL
-psql -h localhost -U postgres -d news_4u
-
-# Or if using Docker
-docker exec -it news-4u-postgres-1 psql -U postgres -d news_4u
-```
-
-### Common Database Queries
-
-Once in the PostgreSQL shell, you can execute queries:
-
-```sql
--- View all tables
-\dt
-
--- View table schemas
-\d rss_feeds
-\d news_articles
-\d raw_feed_data
-\d feed_fetch_logs
-
--- Count articles by category
-SELECT category, COUNT(*) as count 
-FROM news_articles 
-GROUP BY category;
-
--- Get recent articles
-SELECT title, source_name, published_date 
-FROM news_articles 
-ORDER BY published_date DESC 
-LIMIT 10;
-
--- Check RSS feed status
-SELECT name, category, is_active 
-FROM rss_feeds;
-
--- View recent fetch logs
-SELECT feed_name, status, articles_processed, fetch_timestamp 
-FROM feed_fetch_logs 
-ORDER BY fetch_timestamp DESC 
-LIMIT 10;
-
--- Exit PostgreSQL shell
-\q
-```
+The backend uses SQLite by default. The database file will be created as `news_4u.db` in the backend directory.
 
 ### Python Shell Access
 
@@ -152,15 +86,11 @@ from database import get_db
 from models.database import NewsArticle, RSSFeed, FeedFetchLog
 from sqlalchemy.orm import Session
 
-# Get database session
 db = next(get_db())
-
 # Query examples
 articles = db.query(NewsArticle).limit(5).all()
 for article in articles:
     print(f"{article.title} - {article.source_name}")
-
-# Close session
 db.close()
 ```
 
@@ -542,9 +472,6 @@ pip install black isort
 black .
 isort .
 ```
-
-### Database Migrations
-For schema changes, create new migration scripts in `scripts/` directory.
 
 ---
 

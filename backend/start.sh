@@ -14,19 +14,12 @@ fi
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
     echo "Setting default DATABASE_URL..."
-    export DATABASE_URL="postgresql://postgres:password@localhost:5432/news_4u"
+    export DATABASE_URL="sqlite:///./news_4u.db"
 fi
 
 # Activate virtual environment
 echo "Activating virtual environment..."
 source venv/bin/activate
-
-# Check if PostgreSQL URL is valid
-if [[ ! "$DATABASE_URL" =~ ^postgresql:// ]]; then
-    echo "Error: DATABASE_URL must be a PostgreSQL connection string (start with 'postgresql://')"
-    echo "Current DATABASE_URL: $DATABASE_URL"
-    exit 1
-fi
 
 echo "Starting FastAPI server with DATABASE_URL: $DATABASE_URL"
 echo "Server will be available at: http://localhost:8000"

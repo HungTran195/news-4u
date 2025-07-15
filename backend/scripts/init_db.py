@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database initialization script for PostgreSQL.
+Database initialization script for SQLite.
 """
 
 import sys
@@ -17,7 +17,7 @@ from config.rss_feeds import get_all_feeds
 
 def main():
     """Initialize database and load initial data."""
-    print("Initializing News 4U PostgreSQL database...")
+    print("Initializing News 4U SQLite database...")
     
     # Initialize database tables
     init_db()
@@ -69,7 +69,7 @@ def main():
     finally:
         db.close()
     
-    print("\n✓ PostgreSQL database initialization completed successfully!")
+    print("\n✓ SQLite database initialization completed successfully!")
 
 
 if __name__ == "__main__":

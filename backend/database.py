@@ -8,14 +8,14 @@ from typing import Generator
 import os
 from pathlib import Path
 
-# Database URL - Allow PostgreSQL or SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./news_4u.db")
+# Database URL - Use SQLite only
+DATABASE_URL = "sqlite:///./news_4u.db"
 print(f"[INFO] Using database: {DATABASE_URL}")
 
 # Create engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False},
     pool_pre_ping=True
 )
 

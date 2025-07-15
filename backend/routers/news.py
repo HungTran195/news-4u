@@ -271,34 +271,84 @@ async def get_stats(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/articles/{article_id}/extract")
+@router.post("/articles/{article_id}/extract", response_model=NewsArticleResponse)
 async def extract_article_content(article_id: int, db: Session = Depends(get_db)):
-    """Manually extract content for a specific article."""
+    """Manually extract content for a specific article and update missing fields."""
     from models.database import NewsArticle
-    
+    import logging
+    logger = logging.getLogger("extract_article_content")
+
     article = db.query(NewsArticle).filter(NewsArticle.id == article_id).first()
-    if not article:
+    if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    
-    if not article.link:
+    if not getattr(article, "link", None):
         raise HTTPException(status_code=400, detail="Article has no link to extract from")
-    
-    # Extract content
+
     service = RSSService(db)
-    content = await service._extract_article_content(article.link)
-    
-    if content:
-        article.content = content
-        article.updated_at = datetime.now()
+    # Extract content and images
+    content, images = await service._extract_article_content_and_images(getattr(article, "link"))
+
+    updated = False
+    updated_fields = []
+
+    # Update content if empty and new content is found
+    if (getattr(article, "content", None) is None or str(getattr(article, "content", "")).strip() == "") and content:
+        setattr(article, "content", content)
+        updated = True
+        updated_fields.append("content")
+
+    # Update image_url if empty and new image is found
+    if (getattr(article, "image_url", None) is None or str(getattr(article, "image_url", "")).strip() == "") and images:
+        setattr(article, "image_url", images[0])
+        updated = True
+        updated_fields.append("image_url")
+
+    # Try to extract author from meta tags if missing
+    if getattr(article, "author", None) is None or str(getattr(article, "author", "")).strip() == "":
+        try:
+            import httpx
+            from bs4 import BeautifulSoup
+            from bs4.element import Tag
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(getattr(article, "link"))
+                soup = BeautifulSoup(response.text, 'html.parser')
+                author_tag = soup.find('meta', attrs={'name': 'author'})
+                if author_tag and isinstance(author_tag, Tag) and author_tag.get('content'):
+                    author_val = author_tag.get('content', None)
+                    if isinstance(author_val, str):
+                        setattr(article, "author", author_val)
+                        updated = True
+                        updated_fields.append("author")
+        except Exception as e:
+            logger.warning(f"Could not extract author: {e}")
+
+    # Try to extract summary/description if missing
+    if getattr(article, "summary", None) is None or str(getattr(article, "summary", "")).strip() == "":
+        try:
+            import httpx
+            from bs4 import BeautifulSoup
+            from bs4.element import Tag
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(getattr(article, "link"))
+                soup = BeautifulSoup(response.text, 'html.parser')
+                desc_tag = soup.find('meta', attrs={'name': 'description'})
+                if desc_tag and isinstance(desc_tag, Tag) and desc_tag.get('content'):
+                    desc_val = desc_tag.get('content', None)
+                    if isinstance(desc_val, str):
+                        setattr(article, "summary", desc_val)
+                        updated = True
+                        updated_fields.append("summary")
+        except Exception as e:
+            logger.warning(f"Could not extract summary: {e}")
+
+    if updated:
+        setattr(article, "updated_at", datetime.now())
         db.commit()
-        
-        return {
-            "message": "Content extracted successfully",
-            "article_id": article_id,
-            "content_length": len(content)
-        }
+        logger.info(f"Article {article_id} updated fields: {', '.join(updated_fields)}")
     else:
-        raise HTTPException(status_code=500, detail="Failed to extract content")
+        logger.info(f"Article {article_id} extracted, but no new fields to update.")
+
+    return NewsArticleResponse.model_validate(article)
 
 
 @router.post("/extract-content", response_model=Dict[str, Any])
