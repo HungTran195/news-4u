@@ -31,8 +31,7 @@ async def lifespan(app: FastAPI):
                 db_feed = RSSFeed(
                     name=feed.name,
                     url=feed.url,
-                    category=feed.category.value,
-                    description=feed.description
+                    category=feed.category.value
                 )
                 db.add(db_feed)
         db.commit()

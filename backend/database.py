@@ -8,8 +8,21 @@ from typing import Generator
 import os
 from pathlib import Path
 
-# Database URL
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./news_4u.db")
+# Database URL - Require PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "Please set it to your PostgreSQL connection string. "
+        "Example: postgresql://user:password@localhost:5432/dbname"
+    )
+
+# Validate that it's a PostgreSQL URL
+if not DATABASE_URL.startswith("postgresql://"):
+    raise ValueError(
+        f"Invalid DATABASE_URL: {DATABASE_URL}. "
+        "Only PostgreSQL URLs are supported (must start with 'postgresql://')"
+    )
 
 # Create engine
 engine = create_engine(
@@ -46,4 +59,4 @@ def get_db_url() -> str:
     """
     Get the database URL.
     """
-    return DATABASE_URL 
+    return DATABASE_URL  # type: ignore - We validate DATABASE_URL is not None above 

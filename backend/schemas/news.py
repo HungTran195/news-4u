@@ -12,7 +12,6 @@ class RSSFeedBase(BaseModel):
     name: str
     url: str
     category: NewsCategory
-    description: Optional[str] = None
 
 
 class RSSFeedCreate(RSSFeedBase):
@@ -23,7 +22,6 @@ class RSSFeedUpdate(BaseModel):
     name: Optional[str] = None
     url: Optional[str] = None
     category: Optional[NewsCategory] = None
-    description: Optional[str] = None
     is_active: Optional[bool] = None
 
 

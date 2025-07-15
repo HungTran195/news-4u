@@ -22,6 +22,12 @@ def main():
     # Initialize database tables
     init_db()
     print("✓ Database tables created")
+
+    # Delete all RSSFeeds
+    db = next(get_db())
+    db.query(RSSFeed).delete()
+    db.commit()
+    print("✓ All RSSFeeds deleted")
     
     # Load RSS feeds
     db = next(get_db())
@@ -36,7 +42,6 @@ def main():
                     name=feed.name,
                     url=feed.url,
                     category=feed.category.value,
-                    description=feed.description,
                     is_active=True
                 )
                 db.add(db_feed)

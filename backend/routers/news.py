@@ -5,6 +5,7 @@ News API routes for fetching articles and managing RSS feeds.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
@@ -34,7 +35,7 @@ async def health_check(db: Session = Depends(get_db)):
     """Health check endpoint."""
     try:
         # Test database connection
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         database_connected = True
         
         # Get counts
@@ -94,9 +95,12 @@ async def get_articles(
                    .all()
     
     total_pages = (total + per_page - 1) // per_page
+
+    print("--DEBUG-- total", total);
+    print("--DEBUG-- total_pages", total_pages);
     
     return NewsArticleList(
-        articles=articles,
+        articles=[NewsArticleResponse.model_validate(article) for article in articles],
         total=total,
         page=page,
         per_page=per_page,
@@ -136,20 +140,12 @@ async def get_articles_by_category(
     total_pages = (total + per_page - 1) // per_page
     
     return NewsArticleList(
-        articles=articles,
+        articles=[NewsArticleResponse.model_validate(article) for article in articles],
         total=total,
         page=page,
         per_page=per_page,
         total_pages=total_pages
     )
-
-
-@router.get("/sources", response_model=List[str])
-async def get_sources(db: Session = Depends(get_db)):
-    """Get list of all news sources."""
-    from models.database import NewsArticle
-    sources = db.query(NewsArticle.source_name).distinct().all()
-    return [source[0] for source in sources]
 
 
 @router.get("/feeds", response_model=List[RSSFeedResponse])
@@ -345,69 +341,6 @@ async def extract_content_from_url(
         )
 
 
-@router.delete("/cleanup/all")
-async def cleanup_all_data(db: Session = Depends(get_db)):
-    """Clean up all data from the database."""
-    
-    try:
-        # Delete all articles
-        articles_deleted = db.query(NewsArticle).delete()
-        
-        # Delete all raw feed data
-        raw_data_deleted = db.query(RawFeedData).delete()
-        
-        # Delete all fetch logs
-        logs_deleted = db.query(FeedFetchLog).delete()
-        
-        db.commit()
-        
-        return {
-            "message": "All data cleaned up successfully",
-            "articles_deleted": articles_deleted,
-            "raw_data_deleted": raw_data_deleted,
-            "logs_deleted": logs_deleted
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup data: {str(e)}")
-
-
-@router.delete("/cleanup/feed/{feed_name}")
-async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
-    """Clean up data for a specific feed."""
-    print(f"Attempting to cleanup feed data for {feed_name}")
-    try:
-        feed_id = db.query(RSSFeed).filter(RSSFeed.name == feed_name).first().id
-        # Delete articles from this feed
-        articles_deleted = db.query(NewsArticle).filter(
-            NewsArticle.source_name == feed_name
-        ).delete()
-        
-        # Delete raw feed data for this feed
-        raw_data_deleted = db.query(RawFeedData).filter(
-            RawFeedData.feed_id == feed_id
-        ).delete()
-        
-        # Delete fetch logs for this feed
-        logs_deleted = db.query(FeedFetchLog).filter(
-            FeedFetchLog.feed_name == feed_name
-        ).delete()
-        
-        db.commit()
-        
-        return {
-            "message": f"Data for feed '{feed_name}' cleaned up successfully",
-            "feed_name": feed_name,
-            "articles_deleted": articles_deleted,
-            "raw_data_deleted": raw_data_deleted,
-            "logs_deleted": logs_deleted
-        }
-    except Exception as e:
-        print(f"Error cleaning up feed data: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup feed data: {str(e)}")
-
-
 @router.get("/feeds/names")
 async def get_feed_names(db: Session = Depends(get_db)):
     """Get list of all feed names."""
@@ -417,100 +350,41 @@ async def get_feed_names(db: Session = Depends(get_db)):
     return {"feed_names": [feed[0] for feed in feeds]}
 
 
-@router.post("/google-news/search")
-async def search_google_news(
-    query: str = "",
-    category: str = "all",
-    time_filter: str = "24h",
-    max_results: int = 50,
-    page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
-    db: Session = Depends(get_db)
-):
-    """Search articles in local database by title, summary, and content."""
-    from models.database import NewsArticle
-    from sqlalchemy import or_, and_
-    
-    # Build the base query
-    base_query = db.query(NewsArticle)
-    
-    # Apply search filter if query is provided
-    if query and query.strip():
-        search_term = f"%{query.strip()}%"
-        base_query = base_query.filter(
-            or_(
-                NewsArticle.title.ilike(search_term),
-                NewsArticle.summary.ilike(search_term),
-                NewsArticle.content.ilike(search_term)
-            )
-        )
-    
-    # Apply category filter if not "all"
-    if category and category != "all":
-        base_query = base_query.filter(NewsArticle.category == category)
-    
-    # Apply time filter
-    if time_filter and time_filter != "all":
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        
-        if time_filter == "1h":
-            time_limit = now - timedelta(hours=1)
-        elif time_filter == "24h":
-            time_limit = now - timedelta(days=1)
-        elif time_filter == "7d":
-            time_limit = now - timedelta(days=7)
-        elif time_filter == "30d":
-            time_limit = now - timedelta(days=30)
-        else:
-            time_limit = now - timedelta(days=1)  # Default to 24h
-        
-        base_query = base_query.filter(NewsArticle.published_date >= time_limit)
-    
-    # Get total count for pagination
-    total = base_query.count()
-    
-    # Apply pagination
-    offset = (page - 1) * per_page
-    articles = base_query.order_by(
-        NewsArticle.published_date.desc().nullslast(),
-        NewsArticle.created_at.desc()
-    ).offset(offset).limit(per_page).all()
-    
-    # Calculate total pages
-    total_pages = (total + per_page - 1) // per_page
-    
-    return {
-        "status": "success",
-        "articles": articles,
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-        "total_pages": total_pages,
-        "query": query,
-        "category": category,
-        "time_filter": time_filter
-    }
-
-
-@router.get("/google-news/search")
-async def search_google_news_only(
+@router.post("/search")
+async def search_articles(
     query: str = "",
     category: str = "all",
     time_filter: str = "24h",
     max_results: int = 50,
     db: Session = Depends(get_db)
 ):
-    """Search Google News without saving to database (for preview)."""
-    from services.google_news_service import GoogleNewsService
+    """Search articles in the database."""
+    from services.rss_service import RSSService
+    service = RSSService(db)
+    articles = await service.search_articles(query, category, time_filter, max_results)
+    return articles
+
+
+"""
+--------------------------------
+Admin endpoints
+These endpoints are used to clean up the database.
+--------------------------------
+"""
+# TODO: Add authentication to these endpoints.
+@router.delete("/admin/cleanup/all")
+async def cleanup_all_data(db: Session = Depends(get_db)):
+    """Clean up all data from the database."""
+    from services.rss_service import RSSService
+    service = RSSService(db)
+    await service.cleanup_all_data()
+    return {"message": "All data cleaned up successfully"}
+
+@router.delete("/admin/cleanup/feed/{feed_name}")
+async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
+    """Clean up data for a specific feed."""
+    from services.rss_service import RSSService
+    service = RSSService(db)
+    await service.cleanup_feed_data(feed_name)
+    return {"message": f"Data for feed '{feed_name}' cleaned up successfully"} 
     
-    service = GoogleNewsService(db)
-    articles = await service.search_news(query, category, time_filter, max_results)
-    
-    return {
-        "articles": articles,
-        "total": len(articles),
-        "query": query,
-        "category": category,
-        "time_filter": time_filter
-    } 

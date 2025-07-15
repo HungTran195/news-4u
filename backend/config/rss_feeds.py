@@ -7,100 +7,87 @@ from enum import Enum
 
 
 class NewsCategory(str, Enum):
-    TECH = "tech"
-    FINANCE = "finance"
-    GLOBAL_NEWS = "global_news"
-
+    TECH = "Tech"
+    GLOBAL_NEWS = "Global News"
+    VIETNAMESE_NEWS = "Vietnamese News"
+    US_NEWS = "US News"
 
 class RSSFeed(NamedTuple):
     name: str
     url: str
     category: NewsCategory
-    description: str
-
 
 # RSS Feeds Configuration
 RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
-    NewsCategory.TECH: [
-        RSSFeed(
-            name="TechCrunch",
-            url="https://techcrunch.com/feed/",
-            category=NewsCategory.TECH,
-            description="Latest technology news and startup information"
-        ),
-        RSSFeed(
-            name="The Verge",
-            url="https://www.theverge.com/rss/index.xml",
-            category=NewsCategory.TECH,
-            description="Technology, science, art, and culture news"
-        ),
-    ],
-    
-    NewsCategory.FINANCE: [
-        RSSFeed(
-            name="Yahoo Finance",
-            url="https://news.yahoo.com/rss/finance",
-            category=NewsCategory.FINANCE,
-            description="Financial news and market updates"
-        ),
-        RSSFeed(
-            name="Financial Times",
-            url="https://www.ft.com/rss/home",
-            category=NewsCategory.FINANCE,
-            description="International business and financial news"
-        ),
-        RSSFeed(
-            name="CNBC",
-            url="https://feeds.nbcnews.com/nbcnews/public/business",
-            category=NewsCategory.FINANCE,
-            description="Business and financial news from CNBC"
-        ),
-    ],
-    
-    NewsCategory.GLOBAL_NEWS: [
-        RSSFeed(
-            name="BBC News",
-            url="https://feeds.bbci.co.uk/news/rss.xml",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="International news from BBC"
-        ),
-        RSSFeed(
-            name="BBC News – World",
-            url="https://feeds.bbci.co.uk/news/world/rss.xml",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="World news from BBC"
-        ),
-        RSSFeed(
-            name="Reuters World News",
-            url="https://feeds.reuters.com/Reuters/worldNews",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="Global news coverage from Reuters"
-        ),
-        RSSFeed(
-            name="Vox",
-            url="https://www.vox.com/rss/index.xml",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="Explanatory journalism and news analysis"
-        ),
+    NewsCategory.VIETNAMESE_NEWS: [
         RSSFeed(
             name="Vnexpress",
             url="https://vnexpress.net/rss/tin-moi-nhat.rss",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="Tin nhanh VnExpress - Đọc báo, tin tức online 24h"
-        ),
-        RSSFeed(
-            name="Kenh14",
-            url="https://kenh14.vn/rss/home.rss",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="Tin tức giải trí - xã hội Việt Nam "
+            category=NewsCategory.VIETNAMESE_NEWS
         ),
         RSSFeed(
             name="Tuoitre",
             url="https://tuoitre.vn/rss/tin-moi-nhat.rss",
-            category=NewsCategory.GLOBAL_NEWS,
-            description="Tuổi Trẻ Online - Tin mới nhất"
+            category=NewsCategory.VIETNAMESE_NEWS
         ),
-    ]
+        RSSFeed(
+            name="Kenh14",
+            url="https://kenh14.vn/rss/home.rss",
+            category=NewsCategory.VIETNAMESE_NEWS
+        ),
+    ],
+    NewsCategory.TECH: [
+        RSSFeed(
+            name="TechCrunch",
+            url="https://techcrunch.com/feed/",
+            category=NewsCategory.TECH
+        ),
+        RSSFeed(
+            name="The Verge",
+            url="https://www.theverge.com/rss/index.xml",
+            category=NewsCategory.TECH
+        ),
+        RSSFeed(
+            name="Engadget",
+            url="https://www.engadget.com/rss.xml",
+            category=NewsCategory.TECH
+        )
+    ],
+    NewsCategory.US_NEWS: [
+        RSSFeed(
+            name="CNBC",
+            url="https://www.cnbc.com/id/100003114/device/rss/rss.html",
+            category=NewsCategory.US_NEWS
+        ),
+        RSSFeed(
+            name="NBC News",
+            url="https://feeds.nbcnews.com/nbcnews/public/news",
+            category=NewsCategory.US_NEWS
+        ),
+        RSSFeed(
+            name= "ABC News",
+            url="https://abcnews.go.com/abcnews/usheadlines",
+            category=NewsCategory.US_NEWS
+        ),
+    ],
+
+    NewsCategory.GLOBAL_NEWS: [
+        RSSFeed(
+            name="BBC News",
+            url="https://feeds.bbci.co.uk/news/rss.xml",
+            category=NewsCategory.GLOBAL_NEWS
+        ),
+        RSSFeed(
+            name="CNBC Global",
+            url="https://www.cnbc.com/id/100727362/device/rss/rss.html",
+            category=NewsCategory.GLOBAL_NEWS
+        ),
+        RSSFeed(
+            name="CBSNews",
+            url="https://www.cbsnews.com/latest/rss/world",
+            category=NewsCategory.GLOBAL_NEWS
+        ),
+    ]    
 }
 
 
@@ -147,4 +134,4 @@ def update_feed(name: str, updated_feed: RSSFeed) -> bool:
     if remove_feed(name):
         add_feed(updated_feed)
         return True
-    return False 
+    return False

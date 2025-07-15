@@ -32,7 +32,12 @@ alembic upgrade head
 # Initialize database with RSS feeds
 python scripts/init_db.py
 
-# Start the server
+# Start the server (Option 1: Using the startup script)
+./start.sh
+
+# OR start manually (Option 2: Manual commands)
+source venv/bin/activate
+export DATABASE_URL="postgresql://postgres:password@localhost:5432/news_4u"
 uvicorn main:app --reload
 ```
 
@@ -513,7 +518,7 @@ update_feed("Source Name", updated_feed)
 ```
 
 ### Environment Variables
-- `DATABASE_URL`: Database connection string (default: `postgresql://postgres:password@localhost:5432/news_4u`)
+- `DATABASE_URL`: PostgreSQL database connection string (required, example: `postgresql://postgres:password@localhost:5432/news_4u`)
 
 ---
 

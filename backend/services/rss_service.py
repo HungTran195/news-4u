@@ -717,3 +717,31 @@ class RSSService:
             text = text[:10000] + "..."
         
         return text.strip() 
+
+    async def search_articles(self, query: str, category: str, time_filter: str, max_results: int) -> List[NewsArticle]:
+        """
+        Search articles in the database.
+        """
+        return self.db.query(NewsArticle).filter(
+            NewsArticle.title.ilike(f"%{query}%")
+        ).order_by(
+            NewsArticle.published_date.desc()
+        ).limit(max_results).all()
+
+    async def cleanup_all_data(self):
+        """
+        Clean up all data from the database.
+        """
+        self.db.query(NewsArticle).delete()
+        self.db.query(RawFeedData).delete()
+        self.db.query(FeedFetchLog).delete()
+        self.db.commit()
+
+    async def cleanup_feed_data(self, feed_name: str):
+        """
+        Clean up data for a specific feed.
+        """
+        self.db.query(NewsArticle).filter(NewsArticle.source_name == feed_name).delete()
+        self.db.query(RawFeedData).filter(RawFeedData.feed_id == feed_name).delete()
+        self.db.query(FeedFetchLog).filter(FeedFetchLog.feed_name == feed_name).delete()
+        self.db.commit()
