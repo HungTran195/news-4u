@@ -64,13 +64,15 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
   };
 
   const getCategoryColor = (category: string) => {
-    switch (category) {
+    switch (category.toLowerCase().replace(/\s/g, '_')) {
       case 'tech':
         return 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
-      case 'finance':
-        return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+      case 'us_news':
+        return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
       case 'global_news':
         return 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200';
+      case 'vietnamese_news':
+        return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
       default:
         return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
     }
@@ -98,7 +100,7 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
       </button>
 
       {showSelector && (
-        <div className="absolute top-full mt-1 w-80 bg-white border border-gray-300 rounded-md shadow-lg z-10" style={{ left: '-100%' }}>
+        <div className="absolute top-full mt-1 w-80 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-lg z-10" style={{ left: '-100%' }}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-900 dark:text-white">Select Feeds</h3>
@@ -122,7 +124,7 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
             </div>
           </div>
           
-          <div className="max-h-64 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto bg-white dark:bg-gray-800">
             {feeds.map((feed) => (
               <label
                 key={feed.id}
@@ -132,7 +134,7 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
                   type="checkbox"
                   checked={selectedFeeds.includes(feed.name)}
                   onChange={() => handleFeedToggle(feed.name)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded"
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900"
                 />
                 <div className="ml-3 flex-1">
                   <div className="flex items-center justify-between">
@@ -141,9 +143,6 @@ export default function FeedSelector({ selectedFeeds, onFeedSelectionChange }: F
                       {feed.category.replace('_', ' ')}
                     </span>
                   </div>
-                  {feed.description && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{feed.description}</p>
-                  )}
                 </div>
               </label>
             ))}

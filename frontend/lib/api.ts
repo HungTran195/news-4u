@@ -135,6 +135,7 @@ export const newsApi = {
       apiParams.feeds = params.feeds.join(',');
     }
     const response = await api.get('/api/news/articles', { params: apiParams });
+    console.log("--DEBUG-- getArticles", response.data);
     return response.data;
   },
 
@@ -156,15 +157,10 @@ export const newsApi = {
     return response.data;
   },
 
-  // Get sources
-  getSources: async (): Promise<string[]> => {
-    const response = await api.get('/api/news/sources');
-    return response.data;
-  },
-
   // Get feeds
   getFeeds: async (): Promise<RSSFeed[]> => {
     const response = await api.get('/api/news/feeds');
+    console.log("--DEBUG-- getFeeds", response.data);
     return response.data;
   },
 
@@ -197,6 +193,7 @@ export const newsApi = {
   // Get stats
   getStats: async (): Promise<Stats> => {
     const response = await api.get('/api/news/stats');
+    console.log("--DEBUG-- getStats", response.data);
     return response.data;
   },
 

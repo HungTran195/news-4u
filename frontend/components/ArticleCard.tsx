@@ -50,11 +50,11 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
             {getCategoryIcon(article.category)} {article.category.replace('_', ' ')}
           </span>
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {formatRelativeTime(article.published_date || article.created_at)}
+            {formatRelativeTime(article.published_date || article.published_at)}
           </span>
         </div>
         
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-200 mb-2 line-clamp-2">
           {article.title}
         </h2>
         

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { newsApi, NewsArticle, Stats } from '@/lib/api';
 import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
-import { Newspaper, Search } from 'lucide-react';
+import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
@@ -18,7 +18,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'rss' | 'search'>('rss');
+  const [activeTab, setActiveTab] = useState<'news' | 'search'>('news');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState('all');
@@ -36,6 +36,8 @@ export default function HomePage() {
 
   useEffect(() => {
     loadStats();
+    // Automatically load articles on mount
+    loadArticles('all', 1);
   }, []);
 
   useEffect(() => {
@@ -56,25 +58,29 @@ export default function HomePage() {
     }
   };
 
-  const loadArticles = async () => {
+  // Update loadArticles to accept category and page
+  const loadArticles = async (category = 'all', page = 1) => {
     try {
       setLoadingArticles(true);
       const params: any = {
-        page: currentPage,
-        per_page: 12
+        page,
+        per_page: 12,
       };
-      
-      if (selectedCategory !== 'all') {
-        params.category = selectedCategory;
+      if (category !== 'all') {
+        // Map UI category to backend value
+        const categoryMap: Record<string, string> = {
+          all: '',
+          vn: 'Vietnamese News',
+          global: 'Global News',
+          us: 'US News',
+          tech: 'Tech',
+        };
+        params.category = categoryMap[category] || category;
       }
-      
-      if (selectedFeeds.length > 0) {
-        params.feeds = selectedFeeds;
-      }
-      
       const articlesData = await newsApi.getArticles(params);
       setArticles(articlesData.articles);
       setTotalArticles(articlesData.total);
+      setCurrentPage(page);
     } catch (error) {
       // Error handling
     } finally {
@@ -207,7 +213,7 @@ export default function HomePage() {
 
   const handleGoHome = () => {
     setSelectedArticle(null);
-    setActiveTab('rss');
+    setActiveTab('news');
     setSearchQuery('');
     setSearchResults([]);
     setSearchTotal(0);
@@ -227,6 +233,15 @@ export default function HomePage() {
       </div>
     );
   }
+
+  // Tab bar for categories and search
+  const categories = [
+    { key: 'all', label: 'All News', icon: <Newspaper className="h-4 w-4 mr-1" />, color: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200' },
+    { key: 'vn', label: 'VN', icon: <Flag className="h-4 w-4 mr-1 text-green-600 dark:text-green-300" />, color: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' },
+    { key: 'global', label: 'Global', icon: <Globe className="h-4 w-4 mr-1 text-purple-600 dark:text-purple-300" />, color: 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200' },
+    { key: 'us', label: 'US', icon: <Flag className="h-4 w-4 mr-1 text-red-600 dark:text-red-300" />, color: 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' },
+    { key: 'tech', label: 'Tech', icon: <Laptop className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-300" />, color: 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -254,293 +269,88 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Tabs - Only show when not viewing article detail */}
-      {!selectedArticle && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex space-x-8">
-              <button
-                onClick={() => setActiveTab('rss')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'rss'
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <Newspaper className="inline h-4 w-4 mr-2" />
-                RSS Feeds
-              </button>
-              <button
-                onClick={() => setActiveTab('search')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'search'
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <Search className="inline h-4 w-4 mr-2" />
-                Search
-              </button>
-            </div>
-          </div>
+      {/* Category Tabs */}
+      <nav className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-6 mt-4">
+        <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+          {categories.map((cat) => (
+            <button
+              key={cat.key}
+              onClick={() => {
+                setActiveTab('news');
+                setSelectedCategory(cat.key);
+                loadArticles(cat.key, 1);
+              }}
+              className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border text-xs whitespace-nowrap shadow-sm
+                ${activeTab === 'news' && selectedCategory === cat.key
+                  ? `${cat.color} border-primary-600 ring-2 ring-primary-200 dark:ring-primary-700`
+                  : `${cat.color} border-transparent hover:border-primary-400 hover:ring-1 hover:ring-primary-100 dark:hover:ring-primary-700`}
+              `}
+              style={{ minWidth: 80 }}
+            >
+              {cat.icon}
+              {cat.label}
+            </button>
+          ))}
+          <div className="flex-1" />
+          {/* Search Tab on the far right */}
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border-2 text-xs whitespace-nowrap ml-2
+              ${activeTab === 'search'
+                ? 'border-primary-600 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-gray-800 shadow-md'
+                : 'border-gray-400 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:border-primary-500 hover:text-primary-700'}
+            `}
+            style={{ minWidth: 80 }}
+          >
+            <Search className="inline-block mr-1 h-4 w-4 align-text-bottom" /> Search
+          </button>
         </div>
-      )}
-
-      {/* Search - Only show when not viewing article detail */}
-      {!selectedArticle && activeTab === 'search' && (
-        <div className="bg-gray-50 dark:bg-gray-900 py-6">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <SearchBar
-              onSearch={handleSearch}
-              onClear={handleSearchClear}
-              isLoading={isSearching}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Search Results - Only show when not viewing article detail */}
-      {!selectedArticle && activeTab === 'search' && searchQuery && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Database Search Results for "{searchQuery}"
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Found {searchTotal} articles
-                </p>
-              </div>
-              <button
-                onClick={handleSearchClear}
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                Clear Search
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Category Filter (RSS Tab) - Only show when not viewing article detail */}
-      {!selectedArticle && activeTab === 'rss' && (
-        <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex space-x-4 overflow-x-auto">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                  selectedCategory === 'all'
-                    ? 'bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                All News
-              </button>
-              <button
-                onClick={() => setSelectedCategory('tech')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                  selectedCategory === 'tech'
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                💻 Technology
-              </button>
-              <button
-                onClick={() => setSelectedCategory('finance')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                  selectedCategory === 'finance'
-                    ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                💰 Finance
-              </button>
-              <button
-                onClick={() => setSelectedCategory('global_news')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                  selectedCategory === 'global_news'
-                    ? 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                🌍 Global News
-              </button>
-              <button
-                onClick={() => setSelectedCategory('vietnam_news')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                  selectedCategory === 'vietnam_news'
-                    ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                🇻🇳 Vietnam News
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto">
-        {/* Show article detail view if an article is selected */}
-        {selectedArticle ? (
-          <ArticleDetail
-            article={selectedArticle}
-            onBack={() => setSelectedArticle(null)}
-            onExtractContent={handleExtractContent}
+      <main className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-6 py-6">
+        {activeTab === 'search' ? (
+          <SearchBar
+            onSearch={handleSearch}
+            onClear={handleSearchClear}
+            isLoading={isSearching}
           />
         ) : (
+          // Article list and pagination
           <>
-            {/* RSS Feeds Content */}
-            {activeTab === 'rss' && (
-              <>
-                {/* Load Articles Button (if not loaded yet) */}
-                {!hasLoadedArticles && (
-                  <div className="text-center py-12">
-                    <Newspaper className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">Ready to explore news?</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      Click the button below to load articles from your selected feeds and categories.
-                    </p>
-                    <button
-                      onClick={handleLoadArticles}
-                      className="btn btn-primary px-6 py-3 text-lg"
-                    >
-                      <Newspaper className="h-5 w-5 mr-2" />
-                      Load Articles
-                    </button>
-                  </div>
-                )}
-
-                {/* Articles Grid */}
-                {hasLoadedArticles && (
-                  <>
-                    {loadingArticles ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {Array.from({ length: 6 }).map((_, index) => (
-                          <div key={index} className="card animate-pulse">
-                            <div className="aspect-video bg-gray-200 rounded-t-lg"></div>
-                            <div className="p-6">
-                              <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                              <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                              <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
-                              <div className="h-3 bg-gray-200 rounded mb-2"></div>
-                              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <>
-                      <div className="px-4 xs:px-2 sm:px-6 lg:px-8 py-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {articles.map((article) => (
-                            <ArticleCard
-                              key={article.id}
-                              article={article}
-                              onArticleClick={handleArticleClick}
-                              isLoading={loadingArticleId === article.id}
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                        {articles.length === 0 && (
-                          <div className="text-center py-12">
-                            <Newspaper className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No articles found</h3>
-                            <p className="text-gray-600 dark:text-gray-400">
-                              Try fetching news or selecting a different category.
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-
-                {/* Pagination */}
-                {hasLoadedArticles && totalPages > 1 && !loadingArticles && (
-                  <Pagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={handlePageChange}
-                    totalItems={totalArticles}
-                    itemsPerPage={itemsPerPage}
-                  />
-                )}
-              </>
-            )}
-
-            {/* Search Results Content */}
-            {activeTab === 'search' && (
-              <>
-                {isSearching ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <div key={index} className="card animate-pulse">
-                        <div className="aspect-video bg-gray-200 rounded-t-lg"></div>
-                        <div className="p-6">
-                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                          <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
-                          <div className="h-3 bg-gray-200 rounded mb-2"></div>
-                          <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : searchQuery ? (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {searchResults.map((article) => (
-                        <ArticleCard
-                          key={article.id}
-                          article={article}
-                          onArticleClick={handleArticleClick}
-                          isLoading={loadingArticleId === article.id}
-                        />
-                      ))}
-                    </div>
-
-                    {searchResults.length === 0 && (
-                      <div className="text-center py-12">
-                        <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No search results found</h3>
-                        <p className="text-gray-600 dark:text-gray-400">
-                          Try a different search term or category.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Search Pagination */}
-                    {searchTotal > 12 && (
-                      <Pagination
-                        currentPage={currentPage}
-                        totalPages={Math.ceil(searchTotal / 12)}
-                        onPageChange={handleSearchPageChange}
-                        totalItems={searchTotal}
-                        itemsPerPage={12}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-12">
-                    <Search className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">Database Search</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6">
-                      Use the search bar above to find articles in your local database.
-                    </p>
-                  </div>
-                )}
-              </>
+            {/* Remove Load Articles button and UI */}
+            {/* Article List */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {articles.map((article) => (
+                <ArticleCard
+                  key={article.id}
+                  article={article}
+                  onArticleClick={handleArticleClick}
+                  isLoading={loadingArticleId === article.id}
+                />
+              ))}
+            </div>
+            {/* Pagination */}
+            {totalArticles > 12 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalArticles}
+                itemsPerPage={itemsPerPage}
+                onPageChange={(page) => loadArticles(selectedCategory, page)}
+              />
             )}
           </>
         )}
       </main>
+      {/* Article Detail Modal (unchanged) */}
+      {selectedArticle && (
+        <ArticleDetail
+          article={selectedArticle}
+          onBack={() => setSelectedArticle(null)}
+          onExtractContent={handleExtractContent}
+        />
+      )}
     </div>
   );
 } 

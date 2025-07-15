@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
-import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon, calculateReadTime } from '@/lib/utils';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 import ArticleContent from './ArticleContent';
 
 interface ArticleDetailProps {
@@ -43,7 +43,7 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
           </span>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">{article.title}</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-200 mb-4">{article.title}</h1>
 
         {article.summary && (
           <p className="text-lg text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">{article.summary}</p>
@@ -122,8 +122,7 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
             rel="noopener noreferrer"
             className="flex items-center text-primary-600 hover:text-primary-700 font-medium text-sm sm:text-base"
           >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Read Original
+            Read the full story at {article.source_name}
           </a>
         </div>
       </div>
