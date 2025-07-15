@@ -64,10 +64,10 @@ class RSSService:
                 
                 # Update log
                 execution_time = int((time.time() - start_time) * 1000)
-                log_entry.status = "success"
-                log_entry.articles_found = articles_found
-                log_entry.articles_processed = articles_processed
-                log_entry.execution_time = execution_time
+                object.__setattr__(log_entry, 'status', 'success')  # type: ignore
+                object.__setattr__(log_entry, 'articles_found', articles_found)  # type: ignore
+                object.__setattr__(log_entry, 'articles_processed', articles_processed)  # type: ignore
+                object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
                 
                 self.db.commit()
                 
@@ -81,9 +81,9 @@ class RSSService:
         except Exception as e:
             print(f"Error fetching feed {feed.name}: {e}")
             execution_time = int((time.time() - start_time) * 1000)
-            log_entry.status = "error"
-            log_entry.error_message = str(e)
-            log_entry.execution_time = execution_time
+            object.__setattr__(log_entry, 'status', 'error')  # type: ignore
+            object.__setattr__(log_entry, 'error_message', str(e))  # type: ignore
+            object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
             self.db.commit()
             
             return {
@@ -104,57 +104,56 @@ class RSSService:
             db_feed = RSSFeedModel(
                 name=feed.name,
                 url=feed.url,
-                category=feed.category.value,
-                description=feed.description
+                category=feed.category.value
             )
             self.db.add(db_feed)
             self.db.commit()
             self.db.refresh(db_feed)
         
-        return db_feed.id
+        db_feed_id = getattr(db_feed, 'id', None)
+        if db_feed_id is None:
+            raise ValueError('db_feed.id is None')
+        return int(db_feed_id)
     
     async def _process_articles(self, entries: List, feed: RSSFeed) -> int:
         """
-        Process RSS feed entries into news articles.
+        Process RSS feed entries into news articles (metadata only, no content extraction).
+        Handles robust deduplication and ensures session rollback on error.
         """
         processed_count = 0
 
         print(f'---- Processing {len(entries)} articles from {feed.name} ----')
-        all_links = set()
+        # Query all existing article links from the DB for fast deduplication
+        existing_links = set(
+            link for (link,) in self.db.query(NewsArticle.link).all()
+        )
         
         for entry in entries:
             try:
-                # Check if article already exists
-                existing = self.db.query(NewsArticle).filter(
-                    NewsArticle.link == entry.get('link', '')
-                ).first()
-                
-                if existing:
+                link = entry.get('link', '')
+                if not link:
                     continue
+                # Robust deduplication: skip if link already exists
+                if link in existing_links:
+                    continue
+                # Add to set immediately to prevent race conditions in the same batch
+                existing_links.add(link)
                 
                 # Extract article data
                 title = entry.get('title', '').strip()
-                link = entry.get('link', '')
                 summary = self._extract_summary(entry)
                 author = entry.get('author', '')
-                published_date = self._parse_date(entry.get('published', ''))
+                published_date = self._extract_published_date(entry)
                 image_url = self._extract_image(entry)
                 
-                # Extract full content from the article URL
+                # Do NOT extract full content at this stage
                 content = None
-                additional_images = []
-                if link:
-                    if link in all_links:
-                        print(f'---- Link {link} already processed ----')
-                        continue
-                    all_links.add(link)
-                    content, additional_images = await self._extract_article_content_and_images(link)
+                # TODO: Content extraction should be triggered separately after initial save
                 
-                # Use the best available image (RSS image first, then content images)
-                final_image_url = image_url
-                if not final_image_url and additional_images:
-                    final_image_url = additional_images[0]
-                
+
+                if(published_date is None):
+                    print(f"---- Can't parse published date for {title} from {feed.name} ----")
+
                 # Create article
                 article = NewsArticle(
                     title=title,
@@ -166,7 +165,7 @@ class RSSService:
                     category=feed.category.value,
                     source_name=feed.name,
                     source_url=feed.url,
-                    image_url=final_image_url,
+                    image_url=image_url,
                     is_processed=True
                 )
                 
@@ -175,11 +174,13 @@ class RSSService:
                 
             except Exception as e:
                 print(f"Error processing article from {feed.name}: {e}")
+                # Rollback the session to recover from DB errors (e.g., duplicate key)
+                self.db.rollback()
                 continue
         
         self.db.commit()
         return processed_count
-    
+
     def _extract_summary(self, entry) -> Optional[str]:
         """
         Extract summary from RSS entry.
@@ -194,21 +195,45 @@ class RSSService:
         
         return None
     
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
+    def _extract_published_date(self, entry) -> Optional[datetime]:
         """
-        Parse date string to datetime object.
+        Robustly extract published date from RSS entry, trying all common fields.
         """
-        if not date_str:
-            return None
-        
-        try:
-            # Try parsing with feedparser
-            parsed = feedparser._parse_date(date_str)
-            if parsed:
-                return datetime(*parsed[:6])
-        except:
-            pass
-        
+        import email.utils
+        from dateutil import parser as dateutil_parser
+        import time as _time
+        date_fields = [
+            'published', 'pubDate', 'updated', 'created', 'date',
+            'dc:date', 'dc:created', 'dc:issued', 'dc:modified', 'issued', 'modified'
+        ]
+        for field in date_fields:
+            date_str = entry.get(field)
+            if date_str:
+                # Try email.utils.parsedate_to_datetime (Python 3.3+)
+                try:
+                    dt = email.utils.parsedate_to_datetime(date_str)
+                    if dt:
+                        return dt
+                except Exception as e:
+                    pass
+                # Try dateutil.parser.parse (handles ISO 8601 and more)
+                try:
+                    dt2 = dateutil_parser.parse(date_str)
+                    if dt2:
+                        return dt2
+                except Exception as e:
+                    pass
+                # Fallback: try feedparser._parse_date (returns struct_time)
+                try:
+                    parsed = getattr(feedparser, '_parse_date', None)
+                    if parsed:
+                        st = parsed(date_str)
+                        if st and isinstance(st, _time.struct_time):
+                            return datetime(*st[:6])
+                except Exception as e:
+                    pass
+
+                print(f"---- Error parsing date {date_str} ----")
         return None
     
     def _extract_image(self, entry) -> Optional[str]:
@@ -575,6 +600,7 @@ class RSSService:
         """
         Extract image URLs from BeautifulSoup object (fallback method).
         """
+        from bs4.element import Tag
         image_urls = []
         
         # Find all img tags
@@ -600,12 +626,16 @@ class RSSService:
         # Also check for Open Graph and Twitter Card images
         try:
             og_image = soup.find('meta', attrs={'property': 'og:image'})
-            if og_image and og_image.get('content'):
-                image_urls.append(og_image['content'])
+            if og_image and isinstance(og_image, Tag):
+                content = og_image.get('content', None)
+                if content:
+                    image_urls.append(content)
             
             twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
-            if twitter_image and twitter_image.get('content'):
-                image_urls.append(twitter_image['content'])
+            if twitter_image and isinstance(twitter_image, Tag):
+                content = twitter_image.get('content', None)
+                if content:
+                    image_urls.append(content)
         except Exception as e:
             print(f"Error extracting meta images: {e}")
         
