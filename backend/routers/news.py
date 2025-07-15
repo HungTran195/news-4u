@@ -96,8 +96,6 @@ async def get_articles(
     
     total_pages = (total + per_page - 1) // per_page
 
-    print("--DEBUG-- total", total);
-    print("--DEBUG-- total_pages", total_pages);
     
     return NewsArticleList(
         articles=[NewsArticleResponse.model_validate(article) for article in articles],
