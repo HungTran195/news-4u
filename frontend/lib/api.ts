@@ -135,6 +135,7 @@ export const newsApi = {
       apiParams.feeds = params.feeds.join(',');
     }
     const response = await api.get('/api/news/articles', { params: apiParams });
+    console.log('response.data', response.data);
     return response.data;
   },
 
@@ -228,17 +229,5 @@ export const newsApi = {
   }): Promise<any> => {
     const response = await api.get('/api/news/search', { params });
     return response.data;
-  },
-
-  // Extract content from URL
-  extractContentFromUrl: async (url: string): Promise<ContentExtractionResult> => {
-    const response = await api.post('/api/news/extract-content', { url });
-    return response.data;
-  },
+  }
 };
-
-// Standalone function for content extraction
-export async function extractContentFromUrl(url: string): Promise<ContentExtractionResult> {
-  const response = await api.post('/api/news/extract-content', { url });
-  return response.data;
-} 

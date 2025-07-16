@@ -96,14 +96,10 @@ export default function HomePage() {
   const handleArticleClick = async (article: NewsArticle) => {
     setLoadingArticleId(article.id);
     try {
-      // Load full article content if not already loaded
-      if (!article.content) {
-        const fullArticle = await newsApi.getArticle(article.id);
-        setArticles(prev => prev.map(a => a.id === article.id ? fullArticle : a));
-        setSelectedArticle(fullArticle);
-      } else {
-        setSelectedArticle(article);
-      }
+      // Always extract content/details on click
+      const updatedArticle = await newsApi.extractArticleContent(article.id);
+      setArticles(prev => prev.map(a => a.id === article.id ? updatedArticle : a));
+      setSelectedArticle(updatedArticle);
     } catch (error) {
       // Still show the article even if content loading fails
       setSelectedArticle(article);

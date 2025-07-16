@@ -11,6 +11,10 @@ import uvicorn
 from database import init_db, get_db
 from routers import news
 from config.rss_feeds import get_all_feeds
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

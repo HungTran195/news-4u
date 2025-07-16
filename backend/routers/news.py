@@ -285,8 +285,8 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
         raise HTTPException(status_code=400, detail="Article has no link to extract from")
 
     service = RSSService(db)
-    # Extract content and images
-    content, images = await service._extract_article_content_and_images(getattr(article, "link"))
+    # Extract content (this will also update image_url if missing)
+    content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
 
     updated = False
     updated_fields = []
@@ -297,9 +297,9 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
         updated = True
         updated_fields.append("content")
 
-    # Update image_url if empty and new image is found
-    if (getattr(article, "image_url", None) is None or str(getattr(article, "image_url", "")).strip() == "") and images:
-        setattr(article, "image_url", images[0])
+    # Update image_url if it was extracted by the service
+    if extracted_image_url and (not getattr(article, "image_url", None) or str(getattr(article, "image_url", "")).strip() == ""):
+        setattr(article, "image_url", extracted_image_url)
         updated = True
         updated_fields.append("image_url")
 
@@ -349,44 +349,6 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
         logger.info(f"Article {article_id} extracted, but no new fields to update.")
 
     return NewsArticleResponse.model_validate(article)
-
-
-@router.post("/extract-content", response_model=Dict[str, Any])
-async def extract_content_from_url(
-    request: ContentExtractionRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Extract content and images from any URL for testing purposes.
-    """
-    try:
-        rss_service = RSSService(db)
-        
-        # Extract content and images
-        content, images = await rss_service._extract_article_content_and_images(request.url)
-        
-        # Count embedded images in content
-        embedded_image_count = 0
-        if content:
-            embedded_image_count = content.count('[IMAGE:')
-        
-        return {
-            "success": True,
-            "url": request.url,
-            "content": content,
-            "content_length": len(content) if content else 0,
-            "embedded_images": embedded_image_count,
-            "standalone_images": images,
-            "standalone_image_count": len(images),
-            "extracted_at": datetime.utcnow().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error extracting content from {request.url}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to extract content: {str(e)}"
-        )
 
 
 @router.get("/feeds/names")

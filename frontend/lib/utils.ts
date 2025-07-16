@@ -6,7 +6,14 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  // Always treat as UTC (backend always stores UTC)
+  let date: Date;
+  if (dateString.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString)) {
+    date = new Date(dateString);
+  } else {
+    // If no timezone, force UTC
+    date = new Date(dateString + 'Z');
+  }
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
