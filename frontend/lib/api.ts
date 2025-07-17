@@ -135,7 +135,7 @@ export const newsApi = {
       apiParams.feeds = params.feeds.join(',');
     }
     const response = await api.get('/api/news/articles', { params: apiParams });
-    console.log('response.data', response.data);
+    console.log('---- getArticles response.data ----', response.data);
     return response.data;
   },
 
@@ -227,7 +227,8 @@ export const newsApi = {
     page?: number;
     per_page?: number;
   }): Promise<any> => {
-    const response = await api.get('/api/news/search', { params });
+    const response = await api.post('/api/news/search', { params });
+    console.log('--------- response.data', response.data);
     return response.data;
-  }
+  },
 };

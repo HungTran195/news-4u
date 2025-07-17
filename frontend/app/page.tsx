@@ -2,19 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { newsApi, NewsArticle, Stats } from '@/lib/api';
-import { formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
 import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
-import FeedSelector from '@/components/FeedSelector';
+import FeedManager from '@/components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
 
 export default function HomePage() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
   const [showCleanupModal, setShowCleanupModal] = useState(false);
@@ -26,7 +25,7 @@ export default function HomePage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<NewsArticle[]>([]);
   const [searchTotal, setSearchTotal] = useState(0);
-  
+
   // New state for feed selection and lazy loading
   const [selectedFeeds, setSelectedFeeds] = useState<string[]>([]);
   const [totalArticles, setTotalArticles] = useState(0);
@@ -35,36 +34,38 @@ export default function HomePage() {
   const [hasLoadedArticles, setHasLoadedArticles] = useState(false);
 
   useEffect(() => {
-    loadStats();
+    // loadStats();
     // Automatically load articles on mount
-    loadArticles('all', 1);
+    loadArticles('all', 1, []);
   }, []);
 
   useEffect(() => {
     if (hasLoadedArticles) {
-      loadArticles();
+      loadArticles(selectedCategory, currentPage, selectedFeeds);
     }
   }, [currentPage, selectedCategory, selectedFeeds, hasLoadedArticles]);
 
-  const loadStats = async () => {
-    try {
-      setLoading(true);
-      const statsData = await newsApi.getStats();
-      setStats(statsData);
-    } catch (error) {
-      // Error handling
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Temporary disable this 
+  // const loadStats = async () => {
+  //   try {
+  //     setLoading(true);
+  //     const statsData = await newsApi.getStats();
+  //     setStats(statsData);
+  //   } catch (error) {
+  //     // Error handling
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   // Update loadArticles to accept category and page
-  const loadArticles = async (category = 'all', page = 1) => {
+  const loadArticles = async (category = 'all', page = 1, feeds: string[]) => {
     try {
       setLoadingArticles(true);
       const params: any = {
         page,
         per_page: 12,
+        feeds: feeds,
       };
       if (category !== 'all') {
         // Map UI category to backend value
@@ -88,10 +89,6 @@ export default function HomePage() {
     }
   };
 
-  const handleLoadArticles = () => {
-    setHasLoadedArticles(true);
-    setCurrentPage(1);
-  };
 
   const handleArticleClick = async (article: NewsArticle) => {
     setLoadingArticleId(article.id);
@@ -126,13 +123,6 @@ export default function HomePage() {
     }
   };
 
-  const handleCleanupComplete = () => {
-    // Reload data after cleanup
-    loadStats();
-    if (hasLoadedArticles) {
-      loadArticles();
-    }
-  };
 
   const handleSearch = async (query: string, category: string, timeFilter: string) => {
     try {
@@ -141,7 +131,7 @@ export default function HomePage() {
       setSearchCategory(category);
       setSearchTimeFilter(timeFilter);
       setCurrentPage(1);
-      
+
       const result = await newsApi.searchArticles({
         query,
         category,
@@ -149,7 +139,7 @@ export default function HomePage() {
         page: 1,
         per_page: 12
       });
-      
+
       if (result.status === 'success') {
         setSearchResults(result.articles);
         setSearchTotal(result.total);
@@ -173,38 +163,27 @@ export default function HomePage() {
     setSearchTotal(0);
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
 
-  const handleSearchPageChange = async (page: number) => {
-    if (!searchQuery) return;
-    
+  const handleFeedSelectionApply = async (feeds: string[]) => {
+    setSelectedFeeds(feeds);
     try {
-      setIsSearching(true);
-      const result = await newsApi.searchArticles({
-        query: searchQuery,
-        category: searchCategory,
-        time_filter: searchTimeFilter,
-        page,
-        per_page: 12
-      });
-      
-      if (result.status === 'success') {
-        setSearchResults(result.articles);
-        setSearchTotal(result.total);
-        setCurrentPage(page);
-      }
+      console.log("DEBUG---- handleFeedSelectionApply ----", feeds);
+      setLoadingArticles(true);
+      const params: any = {
+        page: 1,
+        per_page: 12,
+        feeds: feeds,
+      };
+
+      const articlesData = await newsApi.getArticles(params);
+      setArticles(articlesData.articles);
+      setTotalArticles(articlesData.total);
+      setCurrentPage(1);
     } catch (error) {
       // Error handling
     } finally {
-      setIsSearching(false);
+      setLoadingArticles(false);
     }
-  };
-
-  const handleFeedSelectionChange = (feeds: string[]) => {
-    setSelectedFeeds(feeds);
-    setCurrentPage(1);
   };
 
   const handleGoHome = () => {
@@ -255,9 +234,9 @@ export default function HomePage() {
               </button>
             </div>
             <div className="flex items-center space-x-3">
-              <FeedSelector
+              <FeedManager
                 selectedFeeds={selectedFeeds}
-                onFeedSelectionChange={handleFeedSelectionChange}
+                onFeedSelectionApply={handleFeedSelectionApply}
               />
               <DarkModeToggle />
             </div>
@@ -273,8 +252,9 @@ export default function HomePage() {
               key={cat.key}
               onClick={() => {
                 setActiveTab('news');
+                setSelectedFeeds([]);
                 setSelectedCategory(cat.key);
-                loadArticles(cat.key, 1);
+                loadArticles(cat.key, 1, []);
               }}
               className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border text-xs whitespace-nowrap shadow-sm
                 ${activeTab === 'news' && selectedCategory === cat.key
@@ -333,7 +313,7 @@ export default function HomePage() {
                 totalPages={totalPages}
                 totalItems={totalArticles}
                 itemsPerPage={itemsPerPage}
-                onPageChange={(page) => loadArticles(selectedCategory, page)}
+                onPageChange={(page) => loadArticles(selectedCategory, page, selectedFeeds)}
               />
             )}
           </>
