@@ -7,6 +7,10 @@ from typing import Optional, Tuple, List, Dict, Any
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class BaseSiteExtractor(ABC):
     """Base class for site-specific content extractors."""
@@ -162,6 +166,21 @@ class BaseSiteExtractor(ABC):
                         del img_tag['data-caption']
                     if img_tag.get('title'):
                         del img_tag['title']
+            
+            # if img tag has src, remove srcset if it exist
+            if img_tag.get('src'):
+                srcset = img_tag.get('srcset')
+                if srcset:
+                    img_tag['srcset'] = ''
+                
+
+            # If img tag has style position absolute, remove it
+            if img_tag.get('style'):
+                style = img_tag.get('style')
+                if style:
+                    style = style.replace('position: absolute;', '')
+                    style = style.replace('position:absolute;', '')
+                    img_tag['style'] = style
 
     def extract_with_fallbacks(self, soup: BeautifulSoup, base_url: str, primary_selectors: List[str], fallback_selectors: Optional[List[str]] = None) -> Optional[str]:
         """Generic extraction method with fallback selectors."""
@@ -204,7 +223,7 @@ class BaseSiteExtractor(ABC):
             return None
 
 class Kenh14Extractor(BaseSiteExtractor):
-    """Content extractor for kenh14.vn."""
+    " Content extractor for kenh14.vn."""
     
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
         """Extract content from kenh14.vn using the detail-content class."""
@@ -296,12 +315,20 @@ class TheVergeExtractor(BaseSiteExtractor):
     """Content extractor for theverge.com."""
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
         try:
-            content_area = soup.find('section', class_="content__body")
+            #  find class like duet--layout--entry-body-container
+            content_area = soup.find('div', class_="duet--layout--entry-body-container")
+            # Save content_area to file
+            with open('theverge_content_area.html', 'w+', encoding='utf-8') as f:
+                f.write(str(content_area))
             if not content_area:
+                logger.warning(f"---- no content_area ----")
                 return None
             self.remove_ads_and_unwanted_elements(content_area)
             self.clean_image_tags(content_area)
             content_html = str(content_area)
+            # Save content_html to file
+            with open('theverge_content_html.html', 'w+', encoding='utf-8') as f:
+                f.write(content_html)
             return self.clean_html_content(content_html)
         except Exception as e:
             print(f"Error extracting content from theverge.com: {e}")

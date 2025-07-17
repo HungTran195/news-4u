@@ -286,7 +286,13 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
 
     service = RSSService(db)
     # Extract content (this will also update image_url if missing)
-    content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
+    if getattr(article, "content", None) is None or str(getattr(article, "content", "")).strip() == "":
+        logger.info(f"Extracting content for article {article_id}")
+        content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
+    else:
+        logger.info(f"Article {article_id} already has content, skipping extraction")
+        content = getattr(article, "content", None)
+        extracted_image_url = getattr(article, "image_url", None)
 
     updated = False
     updated_fields = []
@@ -387,6 +393,7 @@ async def cleanup_all_data(db: Session = Depends(get_db)):
     """Clean up all data from the database."""
     from services.rss_service import RSSService
     service = RSSService(db)
+    logger.warning("---- Cleaning up all data ----")
     await service.cleanup_all_data()
     return {"message": "All data cleaned up successfully"}
 
@@ -395,6 +402,15 @@ async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
     """Clean up data for a specific feed."""
     from services.rss_service import RSSService
     service = RSSService(db)
+    logger.warning(f"---- Cleaning up data for feed '{feed_name}' ----")
     await service.cleanup_feed_data(feed_name)
     return {"message": f"Data for feed '{feed_name}' cleaned up successfully"} 
-    
+
+@router.delete("/admin/cleanup/article/{article_id}")
+async def delete_article_content(article_id: int, db: Session = Depends(get_db)):
+    """Clean up data for a specific article."""
+    from services.rss_service import RSSService
+    service = RSSService(db)
+    logger.warning(f"---- Deleting content for article '{article_id}' ----")
+    await service.delete_article_content(article_id)
+    return {"message": f"Content for article '{article_id}' deleted successfully"}

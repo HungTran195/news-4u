@@ -154,6 +154,7 @@ class RSSService:
                 # Try site-specific extractor first
                 extractor = site_extractor_manager.get_extractor(article_url)
                 if extractor:
+                    logger.info(f"---- Extracting content with {extractor.__class__.__name__} ----")
                     content = extractor.extract_content(soup, article_url)
                     if content:
                         return self._clean_extracted_content(content), extracted_image_url
@@ -194,6 +195,17 @@ class RSSService:
             self.db.query(NewsArticle).filter(NewsArticle.source_name == feed_name).delete()
             self.db.query(RawFeedData).filter(RawFeedData.feed_id == feed_name).delete()
             self.db.query(FeedFetchLog).filter(FeedFetchLog.feed_name == feed_name).delete()
+            self.db.commit()
+    
+    async def delete_article_content(self, article_id: int):
+        """
+        Delete content for a specific article.
+        """
+        if self.db is not None:
+            self.db.query(NewsArticle).filter(NewsArticle.id == article_id).update({
+                NewsArticle.content: None,
+                NewsArticle.image_url: None
+            })
             self.db.commit()
     
     # ============================================================================
@@ -688,8 +700,9 @@ class RSSService:
         text = re.sub(r'Subscribe.*', '', text, flags=re.IGNORECASE)
         
         # Limit content length to avoid database issues
-        if len(text) > 10000:
-            text = text[:10000] + "..."
+        # SQLite TEXT can handle up to 1GB, so we can be more generous
+        if len(text) > 200_000:
+            text = text[:200_000] + "..."
         
         return text.strip()
 
