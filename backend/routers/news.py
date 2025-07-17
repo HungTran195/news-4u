@@ -17,6 +17,7 @@ class ContentExtractionRequest(BaseModel):
 
 from database import get_db
 from services.rss_service import RSSService
+from services.scheduler_service import scheduler_service
 from schemas.news import (
     NewsArticleResponse, 
     NewsArticleList, 
@@ -66,6 +67,7 @@ async def get_articles(
     per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
     db: Session = Depends(get_db)
 ):
+    logger.info(f"---- Getting articles with filters: category={category}, source={source}, feeds={feeds}, page={page}, per_page={per_page} ----")
     """Get articles with optional filtering and pagination."""
     service = RSSService(db)
     offset = (page - 1) * per_page
@@ -364,6 +366,26 @@ async def get_feed_names(db: Session = Depends(get_db)):
     
     feeds = db.query(RSSFeed.name).all()
     return {"feed_names": [feed[0] for feed in feeds]}
+
+
+@router.get("/scheduler/status")
+async def get_scheduler_status():
+    """Get the status of the scheduler and its jobs."""
+    return scheduler_service.get_job_status()
+
+
+@router.post("/scheduler/start")
+async def start_scheduler():
+    """Start the scheduler."""
+    scheduler_service.start()
+    return {"message": "Scheduler started successfully"}
+
+
+@router.post("/scheduler/stop")
+async def stop_scheduler():
+    """Stop the scheduler."""
+    scheduler_service.stop()
+    return {"message": "Scheduler stopped successfully"}
 
 
 @router.post("/search")

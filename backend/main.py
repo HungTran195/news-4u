@@ -11,6 +11,7 @@ import uvicorn
 from database import init_db, get_db
 from routers import news
 from config.rss_feeds import get_all_feeds
+from services.scheduler_service import scheduler_service
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -43,8 +44,15 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     
+    # Start the scheduler
+    scheduler_service.start()
+    print("Scheduler started with cronjobs")
+    
     yield
     
+    # Stop the scheduler
+    scheduler_service.stop()
+    print("Scheduler stopped")
     print("Shutting down News 4U RSS Aggregator...")
 
 
