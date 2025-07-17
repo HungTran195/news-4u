@@ -67,6 +67,7 @@ class NewsArticle(Base):
     source_name = Column(String(255), nullable=False, index=True)
     source_url = Column(String(500))
     image_url = Column(String(1000))
+    slug = Column(String(100), unique=True, index=True)
     is_processed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -77,6 +78,7 @@ class NewsArticle(Base):
         Index('idx_article_published', 'published_date'),
         Index('idx_article_processed', 'is_processed'),
         Index('idx_article_title', 'title'),
+        Index('idx_article_slug', 'slug'),
     )
 
 

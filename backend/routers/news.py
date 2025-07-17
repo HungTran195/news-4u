@@ -120,6 +120,18 @@ async def get_article(article_id: int, db: Session = Depends(get_db)):
     return article
 
 
+@router.get("/articles/slug/{slug}", response_model=NewsArticleResponse)
+async def get_article_by_slug(slug: str, db: Session = Depends(get_db)):
+    """Get a specific article by slug."""
+    from models.database import NewsArticle
+    
+    article = db.query(NewsArticle).filter(NewsArticle.slug == slug).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    
+    return article
+
+
 @router.get("/categories/{category}", response_model=NewsArticleList)
 async def get_articles_by_category(
     category: NewsCategory,

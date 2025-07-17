@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { newsApi, NewsArticle, Stats } from '@/lib/api';
 import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
@@ -11,6 +12,10 @@ import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
 
 export default function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // State management with persistence
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,10 +38,96 @@ export default function HomePage() {
   const [loadingArticleId, setLoadingArticleId] = useState<number | null>(null);
   const [hasLoadedArticles, setHasLoadedArticles] = useState(false);
 
+  // State persistence functions
+  const saveStateToStorage = () => {
+    const state = {
+      selectedCategory,
+      currentPage,
+      selectedFeeds,
+      activeTab,
+      searchQuery,
+      searchCategory,
+      searchTimeFilter,
+      searchResults: searchResults.length > 0 ? searchResults : [],
+      searchTotal
+    };
+    localStorage.setItem('news4u_state', JSON.stringify(state));
+  };
+
+  const loadStateFromStorage = () => {
+    try {
+      const savedState = localStorage.getItem('news4u_state');
+      if (savedState) {
+        const state = JSON.parse(savedState);
+        setSelectedCategory(state.selectedCategory || 'all');
+        setCurrentPage(state.currentPage || 1);
+        setSelectedFeeds(state.selectedFeeds || []);
+        setActiveTab(state.activeTab || 'news');
+        setSearchQuery(state.searchQuery || '');
+        setSearchCategory(state.searchCategory || 'all');
+        setSearchTimeFilter(state.searchTimeFilter || '24h');
+        setSearchResults(state.searchResults || []);
+        setSearchTotal(state.searchTotal || 0);
+        return state;
+      }
+    } catch (error) {
+      console.error('Error loading state from storage:', error);
+    }
+    return null;
+  };
+
+  const updateURLWithState = () => {
+    const params = new URLSearchParams();
+    if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (currentPage > 1) params.set('page', currentPage.toString());
+    if (selectedFeeds.length > 0) params.set('feeds', selectedFeeds.join(','));
+    if (activeTab === 'search') params.set('tab', 'search');
+    if (searchQuery) params.set('q', searchQuery);
+    if (searchCategory !== 'all') params.set('searchCategory', searchCategory);
+    if (searchTimeFilter !== '24h') params.set('timeFilter', searchTimeFilter);
+    
+    const newURL = params.toString() ? `/?${params.toString()}` : '/';
+    window.history.replaceState({}, '', newURL);
+  };
+
+  const loadStateFromURL = () => {
+    const category = searchParams.get('category') || 'all';
+    const page = parseInt(searchParams.get('page') || '1');
+    const feeds = searchParams.get('feeds')?.split(',').filter(Boolean) || [];
+    const tab = searchParams.get('tab') || 'news';
+    const query = searchParams.get('q') || '';
+    const searchCat = searchParams.get('searchCategory') || 'all';
+    const timeFilter = searchParams.get('timeFilter') || '24h';
+
+    setSelectedCategory(category);
+    setCurrentPage(page);
+    setSelectedFeeds(feeds);
+    setActiveTab(tab as 'news' | 'search');
+    setSearchQuery(query);
+    setSearchCategory(searchCat);
+    setSearchTimeFilter(timeFilter);
+
+    return { category, page, feeds, tab, query, searchCat, timeFilter };
+  };
+
   useEffect(() => {
     // loadStats();
-    // Automatically load articles on mount
-    loadArticles('all', 1, []);
+    // Load state from URL first, then from localStorage as fallback
+    const urlState = loadStateFromURL();
+    if (!urlState.category && !urlState.page && !urlState.feeds.length) {
+      // No URL params, try localStorage
+      const storageState = loadStateFromStorage();
+      if (storageState) {
+        // Load articles based on restored state
+        loadArticles(storageState.selectedCategory, storageState.currentPage, storageState.selectedFeeds);
+      } else {
+        // Default load
+        loadArticles('all', 1, []);
+      }
+    } else {
+      // Load articles based on URL state
+      loadArticles(urlState.category, urlState.page, urlState.feeds);
+    }
   }, []);
 
   useEffect(() => {
@@ -44,6 +135,14 @@ export default function HomePage() {
       loadArticles(selectedCategory, currentPage, selectedFeeds);
     }
   }, [currentPage, selectedCategory, selectedFeeds, hasLoadedArticles]);
+
+  // Save state to storage and update URL when relevant state changes
+  useEffect(() => {
+    if (hasLoadedArticles) {
+      saveStateToStorage();
+      updateURLWithState();
+    }
+  }, [selectedCategory, currentPage, selectedFeeds, activeTab, searchQuery, searchCategory, searchTimeFilter]);
 
   // Temporary disable this 
   // const loadStats = async () => {
@@ -91,17 +190,26 @@ export default function HomePage() {
 
 
   const handleArticleClick = async (article: NewsArticle) => {
-    setLoadingArticleId(article.id);
-    try {
-      // Always extract content/details on click
-      const updatedArticle = await newsApi.extractArticleContent(article.id);
-      setArticles(prev => prev.map(a => a.id === article.id ? updatedArticle : a));
-      setSelectedArticle(updatedArticle);
-    } catch (error) {
-      // Still show the article even if content loading fails
-      setSelectedArticle(article);
-    } finally {
-      setLoadingArticleId(null);
+    if (article.slug) {
+      // Save current state before navigating
+      saveStateToStorage();
+      updateURLWithState();
+      // Navigate to the article detail page
+      router.push(`/article/${article.slug}`);
+    } else {
+      // Fallback to modal for articles without slugs
+      setLoadingArticleId(article.id);
+      try {
+        // Always extract content/details on click
+        const updatedArticle = await newsApi.extractArticleContent(article.id);
+        setArticles(prev => prev.map(a => a.id === article.id ? updatedArticle : a));
+        setSelectedArticle(updatedArticle);
+      } catch (error) {
+        // Still show the article even if content loading fails
+        setSelectedArticle(article);
+      } finally {
+        setLoadingArticleId(null);
+      }
     }
   };
 
@@ -147,6 +255,8 @@ export default function HomePage() {
         setSearchResults([]);
         setSearchTotal(0);
       }
+      saveStateToStorage();
+      updateURLWithState();
     } catch (error) {
       setSearchResults([]);
       setSearchTotal(0);
@@ -161,11 +271,14 @@ export default function HomePage() {
     setSearchTimeFilter('24h');
     setSearchResults([]);
     setSearchTotal(0);
+    saveStateToStorage();
+    updateURLWithState();
   };
 
 
   const handleFeedSelectionApply = async (feeds: string[]) => {
     setSelectedFeeds(feeds);
+    setCurrentPage(1);
     try {
       console.log("DEBUG---- handleFeedSelectionApply ----", feeds);
       setLoadingArticles(true);
@@ -179,6 +292,8 @@ export default function HomePage() {
       setArticles(articlesData.articles);
       setTotalArticles(articlesData.total);
       setCurrentPage(1);
+      saveStateToStorage();
+      updateURLWithState();
     } catch (error) {
       // Error handling
     } finally {
@@ -192,6 +307,11 @@ export default function HomePage() {
     setSearchQuery('');
     setSearchResults([]);
     setSearchTotal(0);
+    setSelectedCategory('all');
+    setCurrentPage(1);
+    setSelectedFeeds([]);
+    saveStateToStorage();
+    updateURLWithState();
   };
 
   // Pagination logic
@@ -254,7 +374,10 @@ export default function HomePage() {
                 setActiveTab('news');
                 setSelectedFeeds([]);
                 setSelectedCategory(cat.key);
+                setCurrentPage(1);
                 loadArticles(cat.key, 1, []);
+                saveStateToStorage();
+                updateURLWithState();
               }}
               className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border text-xs whitespace-nowrap shadow-sm
                 ${activeTab === 'news' && selectedCategory === cat.key
@@ -270,7 +393,11 @@ export default function HomePage() {
           <div className="flex-1" />
           {/* Search Tab on the far right */}
           <button
-            onClick={() => setActiveTab('search')}
+            onClick={() => {
+              setActiveTab('search');
+              saveStateToStorage();
+              updateURLWithState();
+            }}
             className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border-2 text-xs whitespace-nowrap ml-2
               ${activeTab === 'search'
                 ? 'border-primary-600 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-gray-800 shadow-md'
@@ -313,7 +440,12 @@ export default function HomePage() {
                 totalPages={totalPages}
                 totalItems={totalArticles}
                 itemsPerPage={itemsPerPage}
-                onPageChange={(page) => loadArticles(selectedCategory, page, selectedFeeds)}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  loadArticles(selectedCategory, page, selectedFeeds);
+                  saveStateToStorage();
+                  updateURLWithState();
+                }}
               />
             )}
           </>

@@ -49,6 +49,7 @@ export interface NewsArticle {
   source_name: string;
   source_url?: string;
   image_url?: string;
+  slug?: string;
   is_processed: boolean;
   created_at: string;
   updated_at?: string;
@@ -142,6 +143,12 @@ export const newsApi = {
   // Get article by ID
   getArticle: async (id: number): Promise<NewsArticle> => {
     const response = await api.get(`/api/news/articles/${id}`);
+    return response.data;
+  },
+
+  // Get article by slug
+  getArticleBySlug: async (slug: string): Promise<NewsArticle> => {
+    const response = await api.get(`/api/news/articles/slug/${slug}`);
     return response.data;
   },
 

@@ -16,6 +16,7 @@ from config.rss_feeds import RSSFeed, get_all_feeds, NewsCategory
 from models.database import RSSFeed as RSSFeedModel, RawFeedData, NewsArticle, FeedFetchLog
 from sqlalchemy.orm import Session
 from services.site_extractors import site_extractor_manager
+from lib.utils import generate_unique_slug
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -281,6 +282,13 @@ class RSSService:
                 if published_date is None:
                     logger.warning(f"Failed to parse published date for '{title}' from {feed.name}. Storing with None.")
 
+                # Generate unique slug for the article
+                existing_slugs = set()
+                if self.db is not None:
+                    existing_slugs = {article.slug for article in self.db.query(NewsArticle.slug).filter(NewsArticle.slug.isnot(None)).all()}
+                
+                slug = generate_unique_slug(title, existing_slugs)
+                
                 # Create article object
                 article = NewsArticle(
                     title=title,
@@ -293,6 +301,7 @@ class RSSService:
                     source_name=feed.name,
                     source_url=feed.url,
                     image_url=image_url,
+                    slug=slug,
                     created_at=datetime.now(),
                     is_processed=True  # Marks as metadata-processed
                 )

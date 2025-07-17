@@ -46,6 +46,7 @@ class NewsArticleBase(BaseModel):
     source_name: str
     source_url: Optional[str] = None
     image_url: Optional[str] = None
+    slug: Optional[str] = None
 
 
 class NewsArticleCreate(NewsArticleBase):
