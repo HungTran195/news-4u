@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { newsApi, NewsArticle, Stats } from '@/lib/api';
 import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
@@ -11,7 +11,7 @@ import FeedManager from '@/components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
 
-export default function HomePage() {
+function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -460,5 +460,20 @@ export default function HomePage() {
         />
       )}
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   );
 } 
