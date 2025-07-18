@@ -7,7 +7,7 @@ import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
-import FeedManager from '@/components/FeedManager';
+import FeedManager from '../components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
 
