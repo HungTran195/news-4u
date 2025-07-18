@@ -11,6 +11,18 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
+# Check for persistent disk
+PERSISTENT_DATA_PATH="/app/data"
+if [ -d "$PERSISTENT_DATA_PATH" ]; then
+    echo "Found persistent disk at $PERSISTENT_DATA_PATH"
+    echo "Database will be stored in persistent storage"
+    # Ensure the data directory exists and has proper permissions
+    mkdir -p "$PERSISTENT_DATA_PATH"
+    chmod 755 "$PERSISTENT_DATA_PATH"
+else
+    echo "Persistent disk not found, using local storage"
+fi
+
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
     echo "Setting default DATABASE_URL..."
