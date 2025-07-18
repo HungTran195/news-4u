@@ -71,7 +71,9 @@
 
 @layer base {
   html {
-    font-family: 'Inter', system-ui, sans-serif;
+    /* any better font? */
+    /* https://fonts.google.com/specimen/Noto+Sans+Vietnamese */
+    font-family: 'Noto Sans Vietnamese', system-ui, sans-serif;
   }
   
   body {

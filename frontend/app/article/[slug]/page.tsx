@@ -72,17 +72,17 @@ export default function ArticlePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 sm:p-8 p-2">
       <div className="max-w-4xl mx-auto">
         <button
           onClick={handleGoBack}
-          className="mb-4 text-blue-600 hover:text-blue-800"
+          className="mb-2 sm:mb-4 text-blue-600 hover:text-blue-800"
         >
           ← Back to News
         </button>
         
         <article className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
               {article.title}
             </h1>
@@ -95,14 +95,14 @@ export default function ArticlePage() {
             </div>
             
             {article.summary && (
-              <p className="text-gray-700 dark:text-gray-300 mb-4">
+              <p className="text-gray-700 dark:text-gray-300 mb-4 text-sm sm:text-base">
                 {article.summary}
               </p>
             )}
             
             {article.content ? (
               <div 
-                className="text-gray-700 dark:text-gray-300"
+                className="text-gray-700 dark:text-gray-300 text-md article-html-content"
                 dangerouslySetInnerHTML={{ __html: article.content }}
               />
             ) : (

@@ -44,7 +44,7 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
         </div>
       )}
       
-      <div className="p-6">
+      <div className="p-3 sm:p-6">
         <div className="flex items-center justify-between mb-3">
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(article.category)}`}>
             {getCategoryIcon(article.category)} {article.category.replace('_', ' ')}

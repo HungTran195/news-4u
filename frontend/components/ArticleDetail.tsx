@@ -85,47 +85,6 @@ export default function ArticleDetail({ article, onBack, onExtractContent }: Art
           
         </div>       
       </div>
-
-      {/* Article Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 lg:p-6">
-        {hasContent ? (
-          <div className="prose max-w-none">
-            <ArticleContent content={article.content || ''} />
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <Loader2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Content Available</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              The full article content hasn't been extracted yet.
-            </p>
-            {onExtractContent && (
-              <button
-                onClick={handleExtractContent}
-                disabled={isExtracting}
-                className="flex items-center mx-auto px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors"
-              >
-                {isExtracting ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Loader2 className="h-4 w-4 mr-2" />
-                )}
-                {isExtracting ? 'Extracting...' : 'Extract Content'}
-              </button>
-            )}
-          </div>
-        )}
-      <div className="flex justify-center text-md text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600 pt-4">
-          <a
-            href={article.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center text-primary-600 hover:text-primary-700 font-medium text-sm sm:text-base"
-          >
-            Read the full story at {article.source_name}
-          </a>
-        </div>
-      </div>
     </div>
   );
 } 
