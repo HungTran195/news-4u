@@ -448,3 +448,25 @@ async def delete_article_content(article_id: int, db: Session = Depends(get_db))
     logger.warning(f"---- Deleting content for article '{article_id}' ----")
     await service.delete_article_content(article_id)
     return {"message": f"Content for article '{article_id}' deleted successfully"}
+
+@router.post("/admin/content/clean-batch")
+async def clean_content_batch(
+    batch_size: int = Query(100, ge=10, le=1000, description="Number of articles to process per batch"),
+    db: Session = Depends(get_db)
+):
+    """
+    Clean HTML content for all articles in the database by removing class names, IDs, and data attributes.
+    This endpoint processes articles in batches to avoid memory issues with large databases.
+    """
+    from services.rss_service import RSSService
+    service = RSSService(db)
+    logger.info(f"---- Starting batch content cleaning with batch size {batch_size} ----")
+    
+    result = await service.clean_content_batch(batch_size)
+    
+    if result["status"] == "success":
+        logger.info(f"---- Batch content cleaning completed: {result['message']} ----")
+    else:
+        logger.error(f"---- Batch content cleaning failed: {result['message']} ----")
+    
+    return result

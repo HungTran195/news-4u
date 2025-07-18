@@ -25,6 +25,9 @@ class BaseSiteExtractor(ABC):
         if not content:
             return ""
         
+        # First, sanitize the HTML by removing unwanted attributes
+        content = self._sanitize_html_attributes(content)
+        
         # Remove excessive whitespace
         content = re.sub(r'\s+', ' ', content)
         
@@ -46,6 +49,71 @@ class BaseSiteExtractor(ABC):
         content = re.sub(r'\n{3,}', '\n\n', content)
         
         return content.strip()
+    
+    def _sanitize_html_attributes(self, html_content: str) -> str:
+        """
+        Remove all class names, IDs, and data attributes from HTML tags while preserving content structure.
+        This creates clean, minimal HTML that's easier to style and maintain.
+        """
+        if not html_content:
+            return ""
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Define attributes to remove
+        attributes_to_remove = [
+            'class', 'id', 'style', 'data-*', 'onclick', 'onload', 'onerror',
+            'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange',
+            'oninput', 'onsubmit', 'onreset', 'onselect', 'onunload',
+            'onkeydown', 'onkeyup', 'onkeypress', 'onmousedown', 'onmouseup',
+            'onmousemove', 'onmouseenter', 'onmouseleave', 'oncontextmenu',
+            'onabort', 'onbeforeunload', 'onerror', 'onhashchange', 'onmessage',
+            'onoffline', 'ononline', 'onpagehide', 'onpageshow', 'onpopstate',
+            'onresize', 'onstorage', 'onbeforeprint', 'onafterprint',
+            'aria-*', 'role', 'tabindex', 'accesskey', 'contenteditable',
+            'draggable', 'dropzone', 'spellcheck', 'translate'
+        ]
+        
+        # Process all tags
+        for tag in soup.find_all():
+            if tag.name:  # Ensure it's a tag
+                # Remove specified attributes
+                for attr in list(tag.attrs.keys()):
+                    # Remove data-* attributes
+                    if attr.startswith('data-'):
+                        del tag[attr]
+                    # Remove aria-* attributes
+                    elif attr.startswith('aria-'):
+                        del tag[attr]
+                    # Remove other specified attributes
+                    elif attr in attributes_to_remove:
+                        del tag[attr]
+                
+                # Special handling for img tags - preserve essential attributes
+                if tag.name == 'img':
+                    # Keep only essential img attributes
+                    essential_img_attrs = ['src', 'alt', 'title', 'width', 'height']
+                    for attr in list(tag.attrs.keys()):
+                        if attr not in essential_img_attrs:
+                            del tag[attr]
+                
+                # Special handling for a tags - preserve href
+                elif tag.name == 'a':
+                    # Keep only href attribute
+                    for attr in list(tag.attrs.keys()):
+                        if attr != 'href':
+                            del tag[attr]
+                
+                # Special handling for table tags - preserve basic table structure
+                elif tag.name in ['table', 'tr', 'td', 'th']:
+                    # Keep only essential table attributes
+                    essential_table_attrs = ['colspan', 'rowspan']
+                    for attr in list(tag.attrs.keys()):
+                        if attr not in essential_table_attrs:
+                            del tag[attr]
+        
+        return str(soup)
     
     def remove_ads_and_unwanted_elements(self, content_area) -> None:
         """Remove ads and unwanted elements from content area."""

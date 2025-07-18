@@ -4,7 +4,7 @@ RSS service for fetching and processing RSS feeds.
 
 import feedparser
 import httpx
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import time
 from bs4 import BeautifulSoup
@@ -699,6 +699,11 @@ class RSSService:
         """
         Clean and format extracted content.
         """
+        # Check if content contains HTML tags
+        if '<' in text and '>' in text:
+            # Apply HTML sanitization first
+            text = self._sanitize_html_attributes(text)
+        
         # Remove excessive whitespace
         text = re.sub(r'\n\s*\n', '\n\n', text)
         text = re.sub(r' +', ' ', text)
@@ -714,6 +719,144 @@ class RSSService:
             text = text[:200_000] + "..."
         
         return text.strip()
+    
+    def _sanitize_html_attributes(self, html_content: str) -> str:
+        """
+        Remove all class names, IDs, and data attributes from HTML tags while preserving content structure.
+        This creates clean, minimal HTML that's easier to style and maintain.
+        """
+        if not html_content:
+            return ""
+        
+        # Parse the HTML content
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Define attributes to remove
+        attributes_to_remove = [
+            'class', 'id', 'style', 'onclick', 'onload', 'onerror',
+            'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange',
+            'oninput', 'onsubmit', 'onreset', 'onselect', 'onunload',
+            'onkeydown', 'onkeyup', 'onkeypress', 'onmousedown', 'onmouseup',
+            'onmousemove', 'onmouseenter', 'onmouseleave', 'oncontextmenu',
+            'onabort', 'onbeforeunload', 'onerror', 'onhashchange', 'onmessage',
+            'onoffline', 'ononline', 'onpagehide', 'onpageshow', 'onpopstate',
+            'onresize', 'onstorage', 'onbeforeprint', 'onafterprint',
+            'role', 'tabindex', 'accesskey', 'contenteditable',
+            'draggable', 'dropzone', 'spellcheck', 'translate'
+        ]
+        
+        # Process all tags
+        for tag in soup.find_all():
+            if tag.name:  # Ensure it's a tag
+                # Remove specified attributes
+                for attr in list(tag.attrs.keys()):
+                    # Remove data-* attributes
+                    if attr.startswith('data-'):
+                        del tag[attr]
+                    # Remove aria-* attributes
+                    elif attr.startswith('aria-'):
+                        del tag[attr]
+                    # Remove other specified attributes
+                    elif attr in attributes_to_remove:
+                        del tag[attr]
+                
+                # Special handling for img tags - preserve essential attributes
+                if tag.name == 'img':
+                    # Keep only essential img attributes
+                    essential_img_attrs = ['src', 'alt', 'title', 'width', 'height']
+                    for attr in list(tag.attrs.keys()):
+                        if attr not in essential_img_attrs:
+                            del tag[attr]
+                
+                # Special handling for a tags - preserve href
+                elif tag.name == 'a':
+                    # Keep only href attribute
+                    for attr in list(tag.attrs.keys()):
+                        if attr != 'href':
+                            del tag[attr]
+                
+                # Special handling for table tags - preserve basic table structure
+                elif tag.name in ['table', 'tr', 'td', 'th']:
+                    # Keep only essential table attributes
+                    essential_table_attrs = ['colspan', 'rowspan']
+                    for attr in list(tag.attrs.keys()):
+                        if attr not in essential_table_attrs:
+                            del tag[attr]
+        
+        return str(soup)
+    
+    async def clean_content_batch(self, batch_size: int = 100) -> Dict[str, Any]:
+        """
+        Clean HTML content for all articles in the database in batches.
+        This removes class names, IDs, and data attributes from existing content.
+        """
+        if self.db is None:
+            return {"status": "error", "message": "Database not available"}
+        
+        try:
+            # Get total count of articles with content
+            total_articles = self.db.query(NewsArticle).filter(
+                NewsArticle.content.isnot(None)
+            ).count()
+            
+            if total_articles == 0:
+                return {
+                    "status": "success",
+                    "message": "No articles with content found",
+                    "total_articles": 0,
+                    "processed_articles": 0,
+                    "updated_articles": 0
+                }
+            
+            processed_count = 0
+            updated_count = 0
+            
+            # Process in batches
+            offset = 0
+            while offset < total_articles:
+                # Get batch of articles
+                articles = self.db.query(NewsArticle).filter(
+                    NewsArticle.content.isnot(None)
+                ).offset(offset).limit(batch_size).all()
+                
+                for article in articles:
+                    processed_count += 1
+                    
+                    if getattr(article, 'content', None):
+                        # Clean the content
+                        cleaned_content = self._clean_extracted_content(getattr(article, 'content'))
+                        
+                        # Update if content changed
+                        if cleaned_content != getattr(article, 'content'):
+                            setattr(article, 'content', cleaned_content)
+                            setattr(article, 'updated_at', datetime.now())
+                            updated_count += 1
+                
+                # Commit batch
+                self.db.commit()
+                offset += batch_size
+                
+                logger.info(f"Processed {processed_count}/{total_articles} articles, updated {updated_count}")
+            
+            return {
+                "status": "success",
+                "message": f"Successfully cleaned content for {total_articles} articles",
+                "total_articles": total_articles,
+                "processed_articles": processed_count,
+                "updated_articles": updated_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during batch content cleaning: {e}")
+            if self.db is not None:
+                self.db.rollback()
+            return {
+                "status": "error",
+                "message": f"Error during batch content cleaning: {str(e)}",
+                "total_articles": 0,
+                "processed_articles": 0,
+                "updated_articles": 0
+            }
 
     def _extract_main_image_url_from_html(self, html: str, base_url: str) -> Optional[str]:
         """
