@@ -123,37 +123,25 @@ class RSSService:
     
     async def extract_article_content(self, article_url: str) -> tuple[Optional[str], Optional[str]]:
         """
-        Extract full article content using site-specific extractors first, then fallback to Newspaper3k.
-        If the article has no image_url, try to extract it before content extraction and update the DB.
-        
-        Returns:
-            tuple: (content, image_url) - content is the extracted article content, 
-                   image_url is the newly extracted image URL (if any was found and updated)
+        Extract full article content from URL using multiple strategies.
         """
         try:
-            # First, try site-specific extractor
+            import httpx
+            from bs4 import BeautifulSoup
+            from services.site_extractors import site_extractor_manager
+            
             async with httpx.AsyncClient(timeout=15) as client:
                 response = await client.get(article_url)
                 response.raise_for_status()
+                
                 soup = BeautifulSoup(response.text, 'html.parser')
-
-                # --- Custom: Try to update image_url if missing ---
-                # Find the NewsArticle in the DB by link
-                article_obj = None
-                extracted_image_url = None
-                if self.db is not None:
-                    article_obj = self.db.query(NewsArticle).filter(NewsArticle.link == article_url).first()
-                if article_obj and (not getattr(article_obj, 'image_url', None) or str(getattr(article_obj, 'image_url', '')).strip() == ''):
-                    image_url = self._extract_main_image_url_from_html(response.text, article_url)
-                    if image_url:
-                        setattr(article_obj, 'image_url', image_url)
-                        setattr(article_obj, 'updated_at', datetime.now())
-                        extracted_image_url = image_url  # Return this to the caller
-                        if self.db is not None:
-                            self.db.commit()
-
-                # Try site-specific extractor first
+                
+                # Extract main image URL first
+                extracted_image_url = self._extract_main_image_url_from_html(response.text, article_url)
+                
+                # Try custom extractor first
                 extractor = site_extractor_manager.get_extractor(article_url)
+                
                 if extractor:
                     logger.info(f"---- Extracting content with {extractor.__class__.__name__} ----")
                     content = extractor.extract_content(soup, article_url)
@@ -166,18 +154,6 @@ class RSSService:
             logger.error(f"Error extracting content from {article_url}: {e}")
             return None, None
     
-    async def search_articles(self, query: str, category: str, time_filter: str, max_results: int) -> List[NewsArticle]:
-        """
-        Search articles in the database.
-        """
-        if self.db is None:
-            return []
-        return self.db.query(NewsArticle).filter(
-            NewsArticle.title.ilike(f"%{query}%")
-        ).order_by(
-            NewsArticle.published_date.desc()
-        ).limit(max_results).all()
-
     async def cleanup_all_data(self):
         """
         Clean up all data from the database.

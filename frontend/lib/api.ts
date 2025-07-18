@@ -233,9 +233,9 @@ export const newsApi = {
     time_filter?: string;
     page?: number;
     per_page?: number;
-  }): Promise<any> => {
-    const response = await api.post('/api/news/search', { params });
-    console.log('--------- response.data', response.data);
+  }): Promise<NewsArticleList> => {
+    const response = await api.get('/api/news/search', { params });
+    console.log('--------- search response.data', response.data);
     return response.data;
   },
 };

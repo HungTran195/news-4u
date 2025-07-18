@@ -114,19 +114,30 @@ function HomePageContent() {
     // loadStats();
     // Load state from URL first, then from localStorage as fallback
     const urlState = loadStateFromURL();
-    if (!urlState.category && !urlState.page && !urlState.feeds.length) {
+    if (!urlState.category && !urlState.page && !urlState.feeds.length && !urlState.query) {
       // No URL params, try localStorage
       const storageState = loadStateFromStorage();
       if (storageState) {
         // Load articles based on restored state
-        loadArticles(storageState.selectedCategory, storageState.currentPage, storageState.selectedFeeds);
+        if (storageState.activeTab === 'search' && storageState.searchQuery) {
+          // Restore search results
+          setSearchResults(storageState.searchResults || []);
+          setSearchTotal(storageState.searchTotal || 0);
+        } else {
+          loadArticles(storageState.selectedCategory, storageState.currentPage, storageState.selectedFeeds);
+        }
       } else {
         // Default load
         loadArticles('all', 1, []);
       }
     } else {
       // Load articles based on URL state
-      loadArticles(urlState.category, urlState.page, urlState.feeds);
+      if (urlState.tab === 'search' && urlState.query) {
+        // Trigger search based on URL params
+        handleSearch(urlState.query, urlState.searchCat, urlState.timeFilter);
+      } else {
+        loadArticles(urlState.category, urlState.page, urlState.feeds);
+      }
     }
   }, []);
 
@@ -248,18 +259,42 @@ function HomePageContent() {
         per_page: 12
       });
 
-      if (result.status === 'success') {
-        setSearchResults(result.articles);
-        setSearchTotal(result.total);
-      } else {
-        setSearchResults([]);
-        setSearchTotal(0);
-      }
+      setSearchResults(result.articles);
+      setSearchTotal(result.total);
       saveStateToStorage();
       updateURLWithState();
     } catch (error) {
+      console.error('Search error:', error);
       setSearchResults([]);
       setSearchTotal(0);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchPageChange = async (page: number) => {
+    try {
+      setIsSearching(true);
+      const result = await newsApi.searchArticles({
+        query: searchQuery,
+        category: searchCategory,
+        time_filter: searchTimeFilter,
+        page,
+        per_page: 12
+      });
+
+      setSearchResults(result.articles);
+      setSearchTotal(result.total);
+      setCurrentPage(page);
+      saveStateToStorage();
+      updateURLWithState();
+      
+      // Scroll to top on mobile after page change
+      if (typeof window !== 'undefined' && window.innerWidth < 640) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (error) {
+      console.error('Search page change error:', error);
     } finally {
       setIsSearching(false);
     }
@@ -280,6 +315,11 @@ function HomePageContent() {
     setSelectedFeeds(feeds);
     setCurrentPage(1);
     setSelectedCategory('all'); // Reset category filter when feeds are selected
+    // Reset search query and results when feeds are selected
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchTotal(0);
+    setActiveTab('news'); // Switch back to news tab
     try {
       console.log("DEBUG---- handleFeedSelectionApply ----", feeds);
       setLoadingArticles(true);
@@ -376,6 +416,10 @@ function HomePageContent() {
                 setSelectedFeeds([]);
                 setSelectedCategory(cat.key);
                 setCurrentPage(1);
+                // Reset search query and results when category is selected
+                setSearchQuery('');
+                setSearchResults([]);
+                setSearchTotal(0);
                 loadArticles(cat.key, 1, []);
                 saveStateToStorage();
                 updateURLWithState();
@@ -414,11 +458,59 @@ function HomePageContent() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-0 sm:px-4 lg:px-6 py-6">
         {activeTab === 'search' ? (
-          <SearchBar
-            onSearch={handleSearch}
-            onClear={handleSearchClear}
-            isLoading={isSearching}
-          />
+          <>
+            <SearchBar
+              onSearch={handleSearch}
+              onClear={handleSearchClear}
+              isLoading={isSearching}
+              initialQuery={searchQuery}
+              initialCategory={searchCategory}
+              initialTimeFilter={searchTimeFilter}
+            />
+            
+            {/* Search Results */}
+            {searchResults.length > 0 ? (
+              <>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Found {searchTotal} results for "{searchQuery}"
+                  </p>
+                </div>
+                
+                {/* Search Results Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3 mb-6">
+                  {searchResults.map((article) => (
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      onArticleClick={handleArticleClick}
+                      isLoading={loadingArticleId === article.id}
+                    />
+                  ))}
+                </div>
+                
+                {/* Search Results Pagination */}
+                {searchTotal > 12 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={Math.ceil(searchTotal / 12)}
+                    totalItems={searchTotal}
+                    itemsPerPage={12}
+                    onPageChange={handleSearchPageChange}
+                  />
+                )}
+              </>
+            ) : searchQuery && !isSearching ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600 dark:text-gray-400">
+                  No results found for "{searchQuery}"
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
+                  Try adjusting your search terms or filters
+                </p>
+              </div>
+            ) : null}
+          </>
         ) : (
           // Article list and pagination
           <>

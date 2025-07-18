@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
-import { calculateReadTime, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon } from '@/lib/utils';
+import { calculateReadTime, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon, truncateWords } from '@/lib/utils';
 import { ExternalLink, Loader2, Clock } from 'lucide-react';
 
 interface ArticleCardProps {
@@ -69,7 +69,7 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
             </h2>
             {article.summary && (
               <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 line-clamp-3 hidden sm:block">
-                {article.summary}
+                {truncateWords(article.summary, 25)}
               </p>
             )}
           </div>

@@ -400,19 +400,76 @@ async def stop_scheduler():
     return {"message": "Scheduler stopped successfully"}
 
 
-@router.post("/search")
+@router.get("/search", response_model=NewsArticleList)
 async def search_articles(
-    query: str = "",
-    category: str = "all",
-    time_filter: str = "24h",
-    max_results: int = 50,
+    query: str = Query("", description="Search query"),
+    category: str = Query("all", description="Filter by category"),
+    time_filter: str = Query("24h", description="Time filter"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
     db: Session = Depends(get_db)
 ):
-    """Search articles in the database."""
+    """Search articles in the database with pagination."""
     from services.rss_service import RSSService
+    from models.database import NewsArticle
+    from sqlalchemy import or_
+    from datetime import datetime, timedelta
+    
     service = RSSService(db)
-    articles = await service.search_articles(query, category, time_filter, max_results)
-    return articles
+    offset = (page - 1) * per_page
+    
+    # Build search query
+    search_query = db.query(NewsArticle)
+    
+    # Apply search filter
+    if query.strip():
+        search_term = f"%{query.strip()}%"
+        search_query = search_query.filter(
+            or_(
+                NewsArticle.title.ilike(search_term),
+                NewsArticle.summary.ilike(search_term),
+                NewsArticle.content.ilike(search_term)
+            )
+        )
+    
+    # Apply category filter
+    if category and category != "all":
+        search_query = search_query.filter(NewsArticle.category == category)
+    
+    # Apply time filter
+    if time_filter and time_filter != "all":
+        now = datetime.now()
+        if time_filter == "1h":
+            time_threshold = now - timedelta(hours=1)
+        elif time_filter == "24h":
+            time_threshold = now - timedelta(days=1)
+        elif time_filter == "7d":
+            time_threshold = now - timedelta(days=7)
+        elif time_filter == "1m":
+            time_threshold = now - timedelta(days=30)
+        else:
+            time_threshold = now - timedelta(days=1)  # default to 24h
+        
+        search_query = search_query.filter(NewsArticle.published_date >= time_threshold)
+    
+    # Get total count for pagination
+    total = search_query.count()
+    
+    # Get paginated results
+    articles = search_query.order_by(
+        NewsArticle.published_date.desc().nullslast(), 
+        NewsArticle.created_at.desc()
+    ).offset(offset).limit(per_page).all()
+    
+    total_pages = (total + per_page - 1) // per_page
+    
+    return NewsArticleList(
+        articles=[NewsArticleResponse.model_validate(article) for article in articles],
+        total=total,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages
+    )
 
 
 """

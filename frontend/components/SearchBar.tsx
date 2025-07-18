@@ -1,19 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Filter, X } from 'lucide-react';
 
 interface SearchBarProps {
   onSearch: (query: string, category: string, timeFilter: string) => void;
   onClear: () => void;
   isLoading?: boolean;
+  initialQuery?: string;
+  initialCategory?: string;
+  initialTimeFilter?: string;
 }
 
-export default function SearchBar({ onSearch, onClear, isLoading = false }: SearchBarProps) {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('24h');
+export default function SearchBar({ 
+  onSearch, 
+  onClear, 
+  isLoading = false,
+  initialQuery = '',
+  initialCategory = 'all',
+  initialTimeFilter = '24h'
+}: SearchBarProps) {
+  const [query, setQuery] = useState(initialQuery);
+  const [category, setCategory] = useState(initialCategory);
+  const [timeFilter, setTimeFilter] = useState(initialTimeFilter);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Update internal state when props change (for resetting from parent)
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
+
+  useEffect(() => {
+    setCategory(initialCategory);
+  }, [initialCategory]);
+
+  useEffect(() => {
+    setTimeFilter(initialTimeFilter);
+  }, [initialTimeFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
