@@ -95,7 +95,7 @@
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 dark:border-gray-700;
   }
   
   .input {

@@ -279,6 +279,7 @@ function HomePageContent() {
   const handleFeedSelectionApply = async (feeds: string[]) => {
     setSelectedFeeds(feeds);
     setCurrentPage(1);
+    setSelectedCategory('all'); // Reset category filter when feeds are selected
     try {
       console.log("DEBUG---- handleFeedSelectionApply ----", feeds);
       setLoadingArticles(true);
@@ -349,8 +350,8 @@ function HomePageContent() {
                 onClick={handleGoHome}
                 className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer"
               >
-                <Newspaper className="h-8 w-8 text-primary-600" />
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">News 4U</h1>
+                <Newspaper className="h-6 w-6 text-primary-800" />
+                <h1 className="text-xl sm:text-2xl font-bold text-primary-800 dark:text-white">News 4U</h1>
               </button>
             </div>
             <div className="flex items-center space-x-3">
@@ -445,6 +446,10 @@ function HomePageContent() {
                   loadArticles(selectedCategory, page, selectedFeeds);
                   saveStateToStorage();
                   updateURLWithState();
+                  // Scroll to top on mobile after page change
+                  if (typeof window !== 'undefined' && window.innerWidth < 640) {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
                 }}
               />
             )}

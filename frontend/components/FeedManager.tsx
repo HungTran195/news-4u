@@ -4,12 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { newsApi, RSSFeed } from '@/lib/api';
 import { Check, Globe, Settings } from 'lucide-react';
 
-interface FeedSelectorProps {
+interface FeedManagerProps {
   selectedFeeds: string[];
   onFeedSelectionApply: (feeds: string[]) => void;
 }
 
-export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: FeedSelectorProps) {
+export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: FeedManagerProps) {
   const [feeds, setFeeds] = useState<RSSFeed[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSelector, setShowSelector] = useState(false);
@@ -112,7 +112,7 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
     <div className="relative" ref={selectorRef}>
       <button
         onClick={() => setShowSelector(!showSelector)}
-        className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+        className="flex items-center space-x-2 px-2 sm:px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
       >
         <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400" />
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
