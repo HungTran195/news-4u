@@ -12,10 +12,10 @@ from pathlib import Path
 def get_database_url() -> str:
     """
     Get the database URL based on environment.
-    The persistent disk can be mounted at /var/data
+    The persistent disk can be mounted at /app/data
     For local development, use the current directory
     """
-    persistent_data_path = "/var/data"
+    persistent_data_path = "/app/data"
     if os.path.exists(persistent_data_path):
         # Ensure the data directory exists
         os.makedirs(persistent_data_path, exist_ok=True)

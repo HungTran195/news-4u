@@ -12,7 +12,7 @@ if [ ! -d "venv" ]; then
 fi
 
 # Check for persistent disk
-PERSISTENT_DATA_PATH="/var/data"
+PERSISTENT_DATA_PATH="/app/data"
 if [ -d "$PERSISTENT_DATA_PATH" ]; then
     echo "Found persistent disk at $PERSISTENT_DATA_PATH"
     echo "Database will be stored in persistent storage"

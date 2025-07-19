@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create data directory for persistent storage
-RUN mkdir -p /var/data && chmod 755 /var/data
+RUN mkdir -p /app/data && chmod 755 /app/data
 
 EXPOSE 8000
 # add log level info to the command
