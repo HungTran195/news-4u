@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { NewsArticle } from '@/lib/api';
 import { calculateReadTime, formatRelativeTime, getCategoryColor, getCategoryIcon, getSourceIcon, truncateWords } from '@/lib/utils';
-import { ExternalLink, Loader2, Clock } from 'lucide-react';
+import { Dot, Loader2, Clock } from 'lucide-react';
 
 interface ArticleCardProps {
   article: NewsArticle;
@@ -29,19 +29,8 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
       onClick={handleClick}
     >
       {/* Mobile: horizontal flex, Desktop: vertical stack */}
-      <div className="flex flex-row sm:flex-col items-stretch">
-        {/* Desktop: Top row with category and reading time */}
-        <div className="hidden sm:flex items-center justify-between p-2">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(article.category)}`}>
-            {getCategoryIcon(article.category)} {article.category.replace('_', ' ')}
-          </span>
-          {/* Reading time on the right (if available) */}
-          {hasContent && readTime > 0 && (
-            <span className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-              <Clock className="h-4 w-4" />{readTime} min read
-            </span>
-          )}
-        </div>
+      <div className="h-full flex flex-row sm:flex-col items-stretch">
+
         {/* Image (left on mobile, below top row on desktop) */}
         <div className="px-2 pe-1 sm:px-0 flex justify-center items-center">
           {article.image_url && !imageError && (
@@ -88,7 +77,16 @@ export default function ArticleCard({ article, onArticleClick, isLoading = false
             <div className="flex items-center space-x-2">
               <span className="text-lg">{getSourceIcon(article.source_name)}</span>
               <span>{article.source_name}</span>
+              <Dot className="h-4 w-4"/>
+
+              {/* Reading time on the right (if available) */}
+            {hasContent && readTime > 0 && (
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                <Clock className="h-4 w-4" />{readTime} min read
+              </span>
+            )}
             </div>
+            
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {formatRelativeTime(article.published_date || article.created_at)}
             </span>

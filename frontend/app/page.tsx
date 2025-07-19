@@ -386,13 +386,10 @@ function HomePageContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-6">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-3">
-              <button
-                onClick={handleGoHome}
-                className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer"
-              >
+              <a href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer">
                 <Newspaper className="h-6 w-6 text-primary-800" />
                 <h1 className="text-xl sm:text-2xl font-bold text-primary-800 dark:text-white">News 4U</h1>
-              </button>
+              </a>
             </div>
             <div className="flex items-center space-x-3">
               <FeedManager
