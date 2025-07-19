@@ -110,24 +110,100 @@ async def get_articles(
 
 @router.get("/articles/{article_id}", response_model=NewsArticleResponse)
 async def get_article(article_id: int, db: Session = Depends(get_db)):
-    """Get a specific article by ID."""
+    """Get a specific article by ID. Automatically extracts content if missing."""
     from models.database import NewsArticle
+    import logging
+    logger = logging.getLogger("get_article")
     
     article = db.query(NewsArticle).filter(NewsArticle.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
+    
+    # Check if article has content, if not, extract it automatically
+    if not getattr(article, "content", None) or str(getattr(article, "content", "")).strip() == "":
+        logger.info(f"Article {article_id} has no content, extracting automatically")
+        
+        if not getattr(article, "link", None):
+            logger.warning(f"Article {article_id} has no link, cannot extract content")
+            return article
+        
+        try:
+            service = RSSService(db)
+            content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
+            
+            updated = False
+            
+            # Update content if extracted
+            if content:
+                setattr(article, "content", content)
+                updated = True
+                logger.info(f"Successfully extracted content for article {article_id}")
+            
+            # Update image_url if extracted and missing
+            if extracted_image_url and (not getattr(article, "image_url", None) or str(getattr(article, "image_url", "")).strip() == ""):
+                setattr(article, "image_url", extracted_image_url)
+                updated = True
+                logger.info(f"Updated image URL for article {article_id}")
+            
+            # Update timestamp if any changes were made
+            if updated:
+                setattr(article, "updated_at", datetime.now())
+                db.commit()
+                logger.info(f"Article {article_id} updated with extracted content")
+            
+        except Exception as e:
+            logger.error(f"Error extracting content for article {article_id}: {e}")
+            # Continue and return the article even if extraction fails
     
     return article
 
 
 @router.get("/articles/slug/{slug}", response_model=NewsArticleResponse)
 async def get_article_by_slug(slug: str, db: Session = Depends(get_db)):
-    """Get a specific article by slug."""
+    """Get a specific article by slug. Automatically extracts content if missing."""
     from models.database import NewsArticle
+    import logging
+    logger = logging.getLogger("get_article_by_slug")
     
     article = db.query(NewsArticle).filter(NewsArticle.slug == slug).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
+    
+    # Check if article has content, if not, extract it automatically
+    if not getattr(article, "content", None) or str(getattr(article, "content", "")).strip() == "":
+        logger.info(f"Article {article.id} (slug: {slug}) has no content, extracting automatically")
+        
+        if not getattr(article, "link", None):
+            logger.warning(f"Article {article.id} has no link, cannot extract content")
+            return article
+        
+        try:
+            service = RSSService(db)
+            content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
+            
+            updated = False
+            
+            # Update content if extracted
+            if content:
+                setattr(article, "content", content)
+                updated = True
+                logger.info(f"Successfully extracted content for article {article.id}")
+            
+            # Update image_url if extracted and missing
+            if extracted_image_url and (not getattr(article, "image_url", None) or str(getattr(article, "image_url", "")).strip() == ""):
+                setattr(article, "image_url", extracted_image_url)
+                updated = True
+                logger.info(f"Updated image URL for article {article.id}")
+            
+            # Update timestamp if any changes were made
+            if updated:
+                setattr(article, "updated_at", datetime.now())
+                db.commit()
+                logger.info(f"Article {article.id} updated with extracted content")
+            
+        except Exception as e:
+            logger.error(f"Error extracting content for article {article.id}: {e}")
+            # Continue and return the article even if extraction fails
     
     return article
 
@@ -329,7 +405,7 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
             import httpx
             from bs4 import BeautifulSoup
             from bs4.element import Tag
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 response = await client.get(getattr(article, "link"))
                 soup = BeautifulSoup(response.text, 'html.parser')
                 author_tag = soup.find('meta', attrs={'name': 'author'})
@@ -348,7 +424,7 @@ async def extract_article_content(article_id: int, db: Session = Depends(get_db)
             import httpx
             from bs4 import BeautifulSoup
             from bs4.element import Tag
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 response = await client.get(getattr(article, "link"))
                 soup = BeautifulSoup(response.text, 'html.parser')
                 desc_tag = soup.find('meta', attrs={'name': 'description'})

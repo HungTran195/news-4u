@@ -49,7 +49,7 @@ class RSSService:
             self.db.commit()
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
                 response = await client.get(feed.url)
                 response.raise_for_status()
                 
@@ -130,7 +130,7 @@ class RSSService:
             from bs4 import BeautifulSoup
             from services.site_extractors import site_extractor_manager
             
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 response = await client.get(article_url)
                 response.raise_for_status()
                 

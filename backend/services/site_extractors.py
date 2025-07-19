@@ -334,23 +334,10 @@ class TuoiTreExtractor(BaseSiteExtractor):
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
         """Extract content from tuoitre.vn."""
         try:
-            # Find the main detail container first
-            detail_main = soup.find('div', class_='detail__main')  # type: ignore
-            if not detail_main:
-                return None
-            
-            # Find the main-detail ID inside detail__main
-            main_detail = detail_main.find('div', id='main-detail')  # type: ignore
-            if not main_detail:
-                return None
-            
-            # Find the detail-content class inside main-detail
-            content_area = main_detail.find('div', class_='detail-content')  # type: ignore
-            
+            # Find five with data-role = content
+            content_area = soup.find('div', attrs={'data-role': 'content'})
             if not content_area:
-                # Fallback: try other common selectors
-                primary_selectors = ['.detail-content', '.content-detail']
-                return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+                return None
             
             self.remove_ads_and_unwanted_elements(content_area)
             self.clean_image_tags(content_area)
@@ -406,7 +393,7 @@ class TheVergeExtractor(BaseSiteExtractor):
 class EngadgetExtractor(BaseSiteExtractor):
     """Content extractor for engadget.com."""
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('section', class_="content__body")
+        content_area = soup.find('div', class_="caas-body")
         if not content_area:
             return None
         self.remove_ads_and_unwanted_elements(content_area)
@@ -418,9 +405,9 @@ class EngadgetExtractor(BaseSiteExtractor):
 class ABCNewsExtractor(BaseSiteExtractor):
     """Content extractor for abcnews.go.com."""
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('section', class_="content__body")
+        # Get property data-testid = prism-article-body
+        content_area = soup.find('div',  attrs={'data-testid': 'prism-article-body'})
         if not content_area:
-            print(f"---- no content_area ----")
             return None
         self.remove_ads_and_unwanted_elements(content_area)
         self.clean_image_tags(content_area)
@@ -431,7 +418,7 @@ class ABCNewsExtractor(BaseSiteExtractor):
 class NBCNewsExtractor(BaseSiteExtractor):
     """Content extractor for nbcnews.com."""
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('section', class_="content__body")
+        content_area = soup.find('div', class_="article-body__content")
         if not content_area:
             return None
         self.remove_ads_and_unwanted_elements(content_area)

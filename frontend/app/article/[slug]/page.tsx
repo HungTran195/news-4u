@@ -80,7 +80,12 @@ export default function ArticlePage() {
         >
           ← Back to News
         </button>
-        
+
+        {/* image url */}
+        {article.image_url && (
+          <img src={article.image_url} alt={article.title} className="w-full h-auto mb-4" />
+        )}
+
         <article className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
           <div className="p-4 sm:p-6">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
