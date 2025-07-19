@@ -14,7 +14,7 @@ import DarkModeToggle from '@/components/DarkModeToggle';
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   // State management with persistence
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -85,7 +85,7 @@ function HomePageContent() {
     if (searchQuery) params.set('q', searchQuery);
     if (searchCategory !== 'all') params.set('searchCategory', searchCategory);
     if (searchTimeFilter !== '24h') params.set('timeFilter', searchTimeFilter);
-    
+
     const newURL = params.toString() ? `/?${params.toString()}` : '/';
     window.history.replaceState({}, '', newURL);
   };
@@ -288,7 +288,7 @@ function HomePageContent() {
       setCurrentPage(page);
       saveStateToStorage();
       updateURLWithState();
-      
+
       // Scroll to top on mobile after page change
       if (typeof window !== 'undefined' && window.innerWidth < 640) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -383,15 +383,14 @@ function HomePageContent() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header - Always visible */}
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-0 lg:px-6">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center space-x-3">
-              <a href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer">
-                <Newspaper className="h-6 w-6 text-primary-800" />
-                <h1 className="text-xl sm:text-2xl font-bold text-primary-800 dark:text-white">News 4U</h1>
-              </a>
-            </div>
-            <div className="flex items-center space-x-3">
+        <div className="max-w-7xl mx-auto px-2 sm:px-0 lg:px-6">
+          <div className="flex justify-end items-center py-2 sm:py-4">
+            <div className="flex items-center space-x-3 ">
+              <div className="mx-4">
+                <a href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer">
+                  <h1 className="text-xl sm:text-2xl font-bold text-primary-800 dark:text-white">News 4U</h1>
+                </a>
+              </div>
               <FeedManager
                 selectedFeeds={selectedFeeds}
                 onFeedSelectionApply={handleFeedSelectionApply}
@@ -464,7 +463,7 @@ function HomePageContent() {
               initialCategory={searchCategory}
               initialTimeFilter={searchTimeFilter}
             />
-            
+
             {/* Search Results */}
             {searchResults.length > 0 ? (
               <>
@@ -473,7 +472,7 @@ function HomePageContent() {
                     Found {searchTotal} results for "{searchQuery}"
                   </p>
                 </div>
-                
+
                 {/* Search Results Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3 mb-6">
                   {searchResults.map((article) => (
@@ -485,7 +484,7 @@ function HomePageContent() {
                     />
                   ))}
                 </div>
-                
+
                 {/* Search Results Pagination */}
                 {searchTotal > 12 && (
                   <Pagination

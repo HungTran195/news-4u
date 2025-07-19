@@ -6,10 +6,24 @@ import { DarkModeProvider } from '@/lib/darkMode';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'News 4U',
-  keywords: ['news', 'RSS', 'aggregator', 'technology', 'finance', 'world news'],
+  title: 'News 4U - Your Personal News Aggregator',
+  keywords: ['news', 'RSS', 'aggregator', 'technology', 'finance', 'world news', 'personal news', 'news reader'],
   authors: [{ name: 'Quoc Hung' }],
-  description: 'Your personal news agent'
+  description: 'Stay informed with News 4U - your intelligent news aggregator that brings together the latest stories from multiple RSS feeds. Get personalized news updates on technology, finance, world events, and more in one convenient place.',
+  openGraph: {
+    title: 'News 4U - Your Personal News Aggregator',
+    description: 'Stay informed with News 4U - your intelligent news aggregator that brings together the latest stories from multiple RSS feeds.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'News 4U - Your Personal News Aggregator',
+    description: 'Stay informed with News 4U - your intelligent news aggregator that brings together the latest stories from multiple RSS feeds.',
+  },
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/favicon.icns',
+  },
 };
 
 export const viewport = {
