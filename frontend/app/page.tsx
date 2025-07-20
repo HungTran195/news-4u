@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { newsApi, NewsArticle } from '@/lib/api';
 import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
-import ArticleDetail from '@/components/ArticleDetail';
 import SearchBar from '@/components/SearchBar';
 import Pagination from '@/components/Pagination';
 import FeedManager from '../components/FeedManager';
@@ -472,13 +471,6 @@ function HomePageContent() {
           </>
         )}
       </main>
-      {selectedArticle && (
-        <ArticleDetail
-          article={selectedArticle}
-          onBack={() => setSelectedArticle(null)}
-          onExtractContent={handleExtractContent}
-        />
-      )}
     </div>
   );
 }

@@ -97,12 +97,6 @@ export default function ArticlePage() {
               )}
             </div>
             
-            {article.summary && (
-              <p className="text-gray-700 dark:text-gray-300 mb-4 text-sm sm:text-base">
-                {article.summary}
-              </p>
-            )}
-            
             {article.content ? (
               <div 
                 className="text-gray-700 dark:text-gray-300 text-md article-html-content"
