@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
         db.close()
     
     # Start the scheduler
-    # scheduler_service.start()
+    scheduler_service.start()
     logger.info("Scheduler started with cronjobs")
     
     yield
