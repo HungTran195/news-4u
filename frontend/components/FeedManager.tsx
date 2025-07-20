@@ -156,11 +156,11 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
               </label>
             ))}
           </div>
-          <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          <div className="flex justify-end p-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <button
               onClick={handleApply}
               disabled={applying || (localSelection.sort().join(',') === selectedFeeds.sort().join(','))}
-              className={`px-4 py-2 rounded-md text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              className={`px-2 py-1 rounded-md text-sm font-medium bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {applying ? 'Applying...' : 'Apply'}
             </button>

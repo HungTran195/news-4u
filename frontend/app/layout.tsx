@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { DarkModeProvider } from '@/lib/darkMode';
+import Footer from '@/components/Footer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -40,8 +41,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <DarkModeProvider>
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-            {children}
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+            <div className="flex-1">
+              {children}
+            </div>
+            <Footer />
           </div>
         </DarkModeProvider>
       </body>
