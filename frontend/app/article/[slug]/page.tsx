@@ -18,8 +18,8 @@ export default function ArticlePage() {
       try {
         setLoading(true);
         setError(null);
-        const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
-        const articleData = await newsApi.getArticleBySlug(slug);
+        const articleName = Array.isArray(params.slug) ? params.slug[0] : params.slug;
+        const articleData = await newsApi.getArticleByName(articleName);
         setArticle(articleData);
       } catch (err) {
         console.error('Error fetching article:', err);

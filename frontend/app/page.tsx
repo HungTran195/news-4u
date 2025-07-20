@@ -3,9 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { newsApi, NewsArticle } from '@/lib/api';
-import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
-import SearchBar from '@/components/SearchBar';
-import Pagination from '@/components/Pagination';
+import { Newspaper, Globe, Laptop, Flag, RefreshCw } from 'lucide-react';
 import FeedManager from '../components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
@@ -19,33 +17,21 @@ function HomePageContent() {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState<{
     articles: boolean;
-    articleId: number | null;
-  }>({ articles: false, articleId: null });
+    articleName: string | null;
+  }>({ articles: false, articleName: null });
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
-  const [activeTab, setActiveTab] = useState<'news' | 'search'>('news');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchCategory, setSearchCategory] = useState('all');
-  const [searchTimeFilter, setSearchTimeFilter] = useState('24h');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<NewsArticle[]>([]);
-  const [searchTotal, setSearchTotal] = useState(0);
+  const [currentOffset, setCurrentOffset] = useState(0);
   const [selectedFeeds, setSelectedFeeds] = useState<string[]>([]);
   const [totalArticles, setTotalArticles] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
 
   // State persistence functions
   const saveStateToStorage = () => {
     const state = {
       selectedCategory,
-      currentPage,
-      selectedFeeds,
-      activeTab,
-      searchQuery,
-      searchCategory,
-      searchTimeFilter,
-      searchResults: searchResults.length > 0 ? searchResults : [],
-      searchTotal
+      currentOffset,
+      selectedFeeds
     };
     localStorage.setItem('news4u_state', JSON.stringify(state));
   };
@@ -56,14 +42,8 @@ function HomePageContent() {
       if (savedState) {
         const state = JSON.parse(savedState);
         setSelectedCategory(state.selectedCategory || 'all');
-        setCurrentPage(state.currentPage || 1);
+        setCurrentOffset(state.currentOffset || 0);
         setSelectedFeeds(state.selectedFeeds || []);
-        setActiveTab(state.activeTab || 'news');
-        setSearchQuery(state.searchQuery || '');
-        setSearchCategory(state.searchCategory || 'all');
-        setSearchTimeFilter(state.searchTimeFilter || '24h');
-        setSearchResults(state.searchResults || []);
-        setSearchTotal(state.searchTotal || 0);
         return state;
       }
     } catch (error) {
@@ -75,12 +55,8 @@ function HomePageContent() {
   const updateURLWithState = () => {
     const params = new URLSearchParams();
     if (selectedCategory !== 'all') params.set('category', selectedCategory);
-    if (currentPage > 1) params.set('page', currentPage.toString());
+    if (currentOffset > 0) params.set('offset', currentOffset.toString());
     if (selectedFeeds.length > 0) params.set('feeds', selectedFeeds.join(','));
-    if (activeTab === 'search') params.set('tab', 'search');
-    if (searchQuery) params.set('q', searchQuery);
-    if (searchCategory !== 'all') params.set('searchCategory', searchCategory);
-    if (searchTimeFilter !== '24h') params.set('timeFilter', searchTimeFilter);
 
     const newURL = params.toString() ? `/?${params.toString()}` : '/';
     window.history.replaceState({}, '', newURL);
@@ -88,61 +64,45 @@ function HomePageContent() {
 
   const loadStateFromURL = () => {
     const category = searchParams.get('category') || 'all';
-    const page = parseInt(searchParams.get('page') || '1');
+    const offset = parseInt(searchParams.get('offset') || '0');
     const feeds = searchParams.get('feeds')?.split(',').filter(Boolean) || [];
-    const tab = searchParams.get('tab') || 'news';
-    const query = searchParams.get('q') || '';
-    const searchCat = searchParams.get('searchCategory') || 'all';
-    const timeFilter = searchParams.get('timeFilter') || '24h';
 
     setSelectedCategory(category);
-    setCurrentPage(page);
+    setCurrentOffset(offset);
     setSelectedFeeds(feeds);
-    setActiveTab(tab as 'news' | 'search');
-    setSearchQuery(query);
-    setSearchCategory(searchCat);
-    setSearchTimeFilter(timeFilter);
 
-    return { category, page, feeds, tab, query, searchCat, timeFilter };
+    return { category, offset, feeds };
   };
 
   useEffect(() => {
     const urlState = loadStateFromURL();
-    if (!urlState.category && !urlState.page && !urlState.feeds.length && !urlState.query) {
+    if (!urlState.category && !urlState.offset && !urlState.feeds.length) {
       const storageState = loadStateFromStorage();
       if (storageState) {
-        if (storageState.activeTab === 'search' && storageState.searchQuery) {
-          setSearchTotal(storageState.searchTotal || 0);
-        } else {
-          loadArticles(storageState.selectedCategory, storageState.currentPage, storageState.selectedFeeds);
-        }
+        loadArticles(storageState.selectedCategory, storageState.currentOffset, storageState.selectedFeeds);
       } else {
-        loadArticles('all', 1, []);
+        loadArticles('all', 0, []);
       }
     } else {
-      if (urlState.tab === 'search' && urlState.query) {
-        handleSearch(urlState.query, urlState.searchCat, urlState.timeFilter);
-      } else {
-        loadArticles(urlState.category, urlState.page, urlState.feeds);
-      }
+      loadArticles(urlState.category, urlState.offset, urlState.feeds);
     }
   }, []);
 
   useEffect(() => {
-    loadArticles(selectedCategory, currentPage, selectedFeeds);
-  }, [currentPage, selectedCategory, selectedFeeds]);
+    loadArticles(selectedCategory, currentOffset, selectedFeeds);
+  }, [currentOffset, selectedCategory, selectedFeeds]);
 
   useEffect(() => {
     saveStateToStorage();
     updateURLWithState();
-  }, [selectedCategory, currentPage, selectedFeeds, activeTab, searchQuery, searchCategory, searchTimeFilter]);
+  }, [selectedCategory, currentOffset, selectedFeeds]);
 
-  const loadArticles = async (category = 'all', page = 1, feeds: string[]) => {
+  const loadArticles = async (category = 'all', offset = 0, feeds: string[]) => {
     try {
       setLoading(prev => ({ ...prev, articles: true }));
       const params: any = {
-        page,
-        per_page: ARTICLES_PER_PAGE,
+        limit: ARTICLES_PER_PAGE,
+        offset: offset,
         feeds: feeds,
       };
       if (category !== 'all') {
@@ -151,7 +111,8 @@ function HomePageContent() {
       const articlesData = await newsApi.getArticles(params);
       setArticles(articlesData.articles);
       setTotalArticles(articlesData.total);
-      setCurrentPage(page);
+      setCurrentOffset(offset);
+      setHasMore(articlesData.has_more);
     } catch (error) {
       // Error handling
     } finally {
@@ -160,33 +121,20 @@ function HomePageContent() {
   };
 
   const handleArticleClick = async (article: NewsArticle) => {
-    if (article.slug) {
-      saveStateToStorage();
-      updateURLWithState();
-      router.push(`/article/${article.slug}`);
-    } else {
-      setLoading(prev => ({ ...prev, articleId: article.id }));
-      try {
-        const updatedArticle = await newsApi.extractArticleContent(article.id);
-        setArticles(prev => prev.map(a => a.id === article.id ? updatedArticle : a));
-        setSelectedArticle(updatedArticle);
-      } catch (error) {
-        setSelectedArticle(article);
-      } finally {
-        setLoading(prev => ({ ...prev, articleId: null }));
-      }
-    }
+    saveStateToStorage();
+    updateURLWithState();
+    router.push(`/article/${article.article_name}`);
   };
 
-  const handleExtractContent = async (articleId: number) => {
+  const handleExtractContent = async (articleName: string) => {
     try {
-      await newsApi.extractArticleContent(articleId);
-      const updatedArticle = articles.find(a => a.id === articleId);
+      await newsApi.extractArticleContent(articleName);
+      const updatedArticle = articles.find(a => a.article_name === articleName);
       if (updatedArticle) {
-        const response = await newsApi.getArticles({ per_page: 1, article_id: articleId });
+        const response = await newsApi.getArticles({ limit: 1, offset: 0 });
         if (response.articles.length > 0) {
           const newArticle = response.articles[0];
-          setArticles(prev => prev.map(a => a.id === articleId ? newArticle : a));
+          setArticles(prev => prev.map(a => a.article_name === articleName ? newArticle : a));
           setSelectedArticle(newArticle);
         }
       }
@@ -195,92 +143,51 @@ function HomePageContent() {
     }
   };
 
-  const handleSearch = async (query: string, category: string, timeFilter: string) => {
+  const handleRefreshFeeds = async () => {
     try {
-      setIsSearching(true);
-      setSearchQuery(query);
-      setSearchCategory(category);
-      setSearchTimeFilter(timeFilter);
-      setCurrentPage(1);
-
-      const result = await newsApi.searchArticles({
-        query,
-        category,
-        time_filter: timeFilter,
-        page: 1,
-        per_page: ARTICLES_PER_PAGE
-      });
-
-      setSearchResults(result.articles);
-      setSearchTotal(result.total);
-      saveStateToStorage();
-      updateURLWithState();
+      setLoading(prev => ({ ...prev, articles: true }));
+      // Trigger feed refresh
+      await fetch('/api/news/fetch', { method: 'POST' });
+      // Reload articles
+      await loadArticles(selectedCategory, 0, selectedFeeds);
     } catch (error) {
-      console.error('Search error:', error);
-      setSearchResults([]);
-      setSearchTotal(0);
+      console.error('Error refreshing feeds:', error);
     } finally {
-      setIsSearching(false);
+      setLoading(prev => ({ ...prev, articles: false }));
     }
   };
 
-  const handleSearchPageChange = async (page: number) => {
-    try {
-      setIsSearching(true);
-      const result = await newsApi.searchArticles({
-        query: searchQuery,
-        category: searchCategory,
-        time_filter: searchTimeFilter,
-        page,
-        per_page: ARTICLES_PER_PAGE
-      });
-
-      setSearchResults(result.articles);
-      setSearchTotal(result.total);
-      setCurrentPage(page);
-      saveStateToStorage();
-      updateURLWithState();
-
-      if (typeof window !== 'undefined' && window.innerWidth < 640) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } catch (error) {
-      console.error('Search page change error:', error);
-    } finally {
-      setIsSearching(false);
+  const handleLoadMore = async () => {
+    if (hasMore) {
+      const newOffset = currentOffset + ARTICLES_PER_PAGE;
+      await loadArticles(selectedCategory, newOffset, selectedFeeds);
     }
   };
 
-  const handleSearchClear = () => {
-    setSearchQuery('');
-    setSearchCategory('all');
-    setSearchTimeFilter('24h');
-    setSearchResults([]);
-    setSearchTotal(0);
-    saveStateToStorage();
-    updateURLWithState();
+  const handleLoadOlder = async () => {
+    if (currentOffset > 0) {
+      const newOffset = Math.max(0, currentOffset - ARTICLES_PER_PAGE);
+      await loadArticles(selectedCategory, newOffset, selectedFeeds);
+    }
   };
 
   const handleFeedSelectionApply = async (feeds: string[]) => {
     setSelectedFeeds(feeds);
-    setCurrentPage(1);
+    setCurrentOffset(0);
     setSelectedCategory('all');
-    setSearchQuery('');
-    setSearchResults([]);
-    setSearchTotal(0);
-    setActiveTab('news');
     try {
       setLoading(prev => ({ ...prev, articles: true }));
       const params: any = {
-        page: 1,
-        per_page: ARTICLES_PER_PAGE,
+        limit: ARTICLES_PER_PAGE,
+        offset: 0,
         feeds: feeds,
       };
 
       const articlesData = await newsApi.getArticles(params);
       setArticles(articlesData.articles);
       setTotalArticles(articlesData.total);
-      setCurrentPage(1);
+      setCurrentOffset(0);
+      setHasMore(articlesData.has_more);
       saveStateToStorage();
       updateURLWithState();
     } catch (error) {
@@ -290,7 +197,7 @@ function HomePageContent() {
     }
   };
 
-  const totalPages = Math.ceil(totalArticles / ARTICLES_PER_PAGE);
+
 
   if (loading.articles) {
     return (
@@ -340,19 +247,15 @@ function HomePageContent() {
             <button
               key={cat.key}
               onClick={() => {
-                setActiveTab('news');
                 setSelectedFeeds([]);
                 setSelectedCategory(cat.key);
-                setCurrentPage(1);
-                setSearchQuery('');
-                setSearchResults([]);
-                setSearchTotal(0);
-                loadArticles(cat.key, 1, []);
+                setCurrentOffset(0);
+                loadArticles(cat.key, 0, []);
                 saveStateToStorage();
                 updateURLWithState();
               }}
               className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border text-xs whitespace-nowrap shadow-sm
-                ${activeTab === 'news' && selectedCategory === cat.key
+                ${selectedCategory === cat.key
                   ? `${cat.color} border-primary-600 ring-2 ring-primary-200 dark:ring-primary-700`
                   : `${cat.color} border-transparent hover:border-primary-400 hover:ring-1 hover:ring-primary-100 dark:hover:ring-primary-700`}
               `}
@@ -363,112 +266,58 @@ function HomePageContent() {
             </button>
           ))}
           <div className="flex-1" />
-          {/* Search Tab on the far right */}
+          {/* Refresh Button */}
           <button
-            onClick={() => {
-              setActiveTab('search');
-              saveStateToStorage();
-              updateURLWithState();
-            }}
-            className={`flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border-2 text-xs whitespace-nowrap ml-2
-              ${activeTab === 'search'
-                ? 'border-primary-600 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-gray-800 shadow-md'
-                : 'border-gray-400 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:border-primary-500 hover:text-primary-700'}
-            `}
+            onClick={handleRefreshFeeds}
+            disabled={loading.articles}
+            className="flex items-center px-3 py-1.5 rounded-full font-medium focus:outline-none transition-all duration-150 border-2 text-xs whitespace-nowrap ml-2 border-gray-400 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:border-primary-500 hover:text-primary-700 disabled:opacity-50"
             style={{ minWidth: 80 }}
           >
-            <Search className="inline-block mr-1 h-4 w-4 align-text-bottom" /> Search
+            <RefreshCw className={`inline-block mr-1 h-4 w-4 align-text-bottom ${loading.articles ? 'animate-spin' : ''}`} /> Refresh
           </button>
         </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-0 sm:px-4 lg:px-6 py-6">
-        {activeTab === 'search' ? (
-          <>
-            <SearchBar
-              onSearch={handleSearch}
-              onClear={handleSearchClear}
-              isLoading={isSearching}
-              initialQuery={searchQuery}
-              initialCategory={searchCategory}
-              initialTimeFilter={searchTimeFilter}
+        {/* Articles Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3">
+          {articles.map((article) => (
+            <ArticleCard
+              key={article.article_name}
+              article={article}
+              onArticleClick={handleArticleClick}
+              isLoading={loading.articleName === article.article_name}
             />
+          ))}
+        </div>
 
-            {/* Search Results */}
-            {searchResults.length > 0 ? (
-              <>
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Found {searchTotal} results for "{searchQuery}"
-                  </p>
-                </div>
+        {/* Load More/Older Buttons */}
+        <div className="mt-8 flex justify-center space-x-4">
+          {currentOffset > 0 && (
+            <button
+              onClick={handleLoadOlder}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Load Older
+            </button>
+          )}
+          {hasMore && (
+            <button
+              onClick={handleLoadMore}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Load More
+            </button>
+          )}
+        </div>
 
-                {/* Search Results Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3 mb-6">
-                  {searchResults.map((article) => (
-                    <ArticleCard
-                      key={article.id}
-                      article={article}
-                      onArticleClick={handleArticleClick}
-                      isLoading={loading.articleId === article.id}
-                    />
-                  ))}
-                </div>
-
-                {/* Search Results Pagination */}
-                {searchTotal > ARTICLES_PER_PAGE && (
-                  <Pagination
-                    currentPage={currentPage}
-                    totalPages={Math.ceil(searchTotal / ARTICLES_PER_PAGE)}
-                    totalItems={searchTotal}
-                    itemsPerPage={ARTICLES_PER_PAGE}
-                    onPageChange={handleSearchPageChange}
-                  />
-                )}
-              </>
-            ) : searchQuery && !isSearching ? (
-              <div className="text-center py-12">
-                <p className="text-gray-600 dark:text-gray-400">
-                  No results found for "{searchQuery}"
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-                  Try adjusting your search terms or filters
-                </p>
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <>
-            {/* Article List */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3">
-              {articles.map((article) => (
-                <ArticleCard
-                  key={article.id}
-                  article={article}
-                  onArticleClick={handleArticleClick}
-                  isLoading={loading.articleId === article.id}
-                />
-              ))}
-            </div>
-            {/* Pagination */}
-            {totalArticles > ARTICLES_PER_PAGE && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={totalArticles}
-                itemsPerPage={ARTICLES_PER_PAGE}
-                onPageChange={(page) => {
-                  setCurrentPage(page);
-                  loadArticles(selectedCategory, page, selectedFeeds);
-                  saveStateToStorage();
-                  updateURLWithState();
-                  if (typeof window !== 'undefined' && window.innerWidth < 640) {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                }}
-              />
-            )}
-          </>
+        {/* No Articles Message */}
+        {articles.length === 0 && !loading.articles && (
+          <div className="text-center py-12">
+            <p className="text-gray-600 dark:text-gray-400">
+              No articles found. Try refreshing the feeds or selecting different categories.
+            </p>
+          </div>
         )}
       </main>
     </div>

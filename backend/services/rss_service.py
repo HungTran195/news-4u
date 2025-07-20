@@ -14,10 +14,8 @@ from newspaper import Article, Config
 import logging
 
 from config.rss_feeds import RSSFeed, get_all_feeds, NewsCategory
-from models.database import RSSFeed as RSSFeedModel, NewsArticle, FeedFetchLog
-from sqlalchemy.orm import Session
+from services.s3_service import S3Service
 from services.site_extractors import site_extractor_manager
-from lib.utils import generate_unique_slug
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -25,13 +23,10 @@ logger = logging.getLogger(__name__)
 
 class RSSService:
     """Service for handling RSS feed operations."""
-    def __init__(self, db: Optional[Session] = None):
-        self.db = db
+    def __init__(self):
+        self.s3_service = S3Service()
         self.timeout = 30  # seconds
-        self.batch_size = 100  # Batch size for database operations
-        self._slug_cache = set()  # Cache for existing slugs
-        self._cache_timestamp = None
-        self._cache_ttl = 300  # 5 minutes cache TTL
+        self.batch_size = 100  # Batch size for operations
         
         # HTTP client headers to avoid 403 errors
         self._headers = {
@@ -53,15 +48,12 @@ class RSSService:
         Fetch RSS feed asynchronously.
         """
         start_time = time.time()
-        log_entry = FeedFetchLog(
-            feed_name=feed.name,
-            status="fetching",
-            articles_found=0,
-            articles_processed=0
-        )
-        if self.db is not None:
-            self.db.add(log_entry)
-            self.db.commit()
+        log_entry = {
+            'feed_name': feed.name,
+            'status': 'fetching',
+            'articles_found': 0,
+            'articles_processed': 0
+        }
         
         try:
             # Try with retries for problematic feeds
@@ -79,13 +71,15 @@ class RSSService:
             
             # Update log
             execution_time = int((time.time() - start_time) * 1000)
-            object.__setattr__(log_entry, 'status', 'success')  # type: ignore
-            object.__setattr__(log_entry, 'articles_found', articles_found)  # type: ignore
-            object.__setattr__(log_entry, 'articles_processed', articles_processed)  # type: ignore
-            object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
+            log_entry.update({
+                'status': 'success',
+                'articles_found': articles_found,
+                'articles_processed': articles_processed,
+                'execution_time': execution_time
+            })
             
-            if self.db is not None:
-                self.db.commit()
+            # Save log to S3
+            self.s3_service.save_fetch_log(log_entry)
             
             return {
                 "status": "success",
@@ -97,11 +91,14 @@ class RSSService:
         except Exception as e:
             logger.error(f"Error fetching feed {feed.name}: {e}")
             execution_time = int((time.time() - start_time) * 1000)
-            object.__setattr__(log_entry, 'status', 'error')  # type: ignore
-            object.__setattr__(log_entry, 'error_message', str(e))  # type: ignore
-            object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
-            if self.db is not None:
-                self.db.commit()
+            log_entry.update({
+                'status': 'error',
+                'error_message': str(e),
+                'execution_time': execution_time
+            })
+            
+            # Save log to S3
+            self.s3_service.save_fetch_log(log_entry)
             
             return {
                 "status": "error",
@@ -156,66 +153,50 @@ class RSSService:
     
     async def cleanup_all_data(self):
         """
-        Clean up all data from the database.
+        Clean up all data from S3.
         """
-        if self.db is not None:
-            self.db.query(NewsArticle).delete()
-            self.db.query(FeedFetchLog).delete()
-            self.db.commit()
+        return self.s3_service.cleanup_all_data()
 
     async def cleanup_feed_data(self, feed_name: str):
         """
         Clean up data for a specific feed.
         """
-        if self.db is not None:
-            self.db.query(NewsArticle).filter(NewsArticle.source_name == feed_name).delete()
-            self.db.query(FeedFetchLog).filter(FeedFetchLog.feed_name == feed_name).delete()
-            self.db.commit()
+        return self.s3_service.delete_articles_by_source(feed_name)
     
-    async def delete_article_content(self, article_id: int):
+    async def delete_article_content(self, article_name: str):
         """
         Delete content for a specific article.
         """
-        if self.db is not None:
-            self.db.query(NewsArticle).filter(NewsArticle.id == article_id).update({
-                NewsArticle.content: None,
-                NewsArticle.image_url: None
-            })
-            self.db.commit()
+        return self.s3_service.update_article(article_name, {
+            'content': None,
+            'image_url': None
+        })
 
-    def get_articles_by_category(self, category: NewsCategory, limit: int = 50, offset: int = 0) -> List[NewsArticle]:
+    def get_articles_by_category(self, category: NewsCategory, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
         """
         Get articles by category with pagination.
         """
-        if self.db is None:
-            return []
-        return self.db.query(NewsArticle).filter(
-            NewsArticle.category == category.value
-        ).order_by(
-            NewsArticle.published_date.desc()
-        ).offset(offset).limit(limit).all()
+        return self.s3_service.get_all_articles(
+            limit=limit, 
+            offset=offset, 
+            category=category.value
+        )
     
-    def get_recent_articles(self, limit: int = 50) -> List[NewsArticle]:
+    def get_recent_articles(self, limit: int = 50) -> Dict[str, Any]:
         """
         Get recent articles across all categories.
         """
-        if self.db is None:
-            return []
-        return self.db.query(NewsArticle).order_by(
-            NewsArticle.published_date.desc()
-        ).limit(limit).all()
+        return self.s3_service.get_all_articles(limit=limit, offset=0)
     
-    def get_articles_by_source(self, source_name: str, limit: int = 50) -> List[NewsArticle]:
+    def get_articles_by_source(self, source_name: str, limit: int = 50) -> Dict[str, Any]:
         """
         Get articles by source name.
         """
-        if self.db is None:
-            return []
-        return self.db.query(NewsArticle).filter(
-            NewsArticle.source_name == source_name
-        ).order_by(
-            NewsArticle.published_date.desc()
-        ).limit(limit).all()
+        return self.s3_service.get_all_articles(
+            limit=limit, 
+            offset=0, 
+            source=source_name
+        )
     
     # ============================================================================
     # PRIVATE METHODS
@@ -255,20 +236,13 @@ class RSSService:
     
     async def _process_articles_batch(self, entries: List, feed: RSSFeed) -> int:
         """
-        Process RSS feed entries into news articles (metadata only, no content extraction).
-        Handles robust deduplication using ON CONFLICT and efficient batch insertion.
+        Process RSS feed entries into news articles and save them to S3.
         """
         if not entries:
             return 0
         
-        # List to hold article objects ready for batch insertion
-        articles_to_add = []
-        processed_successfully_count = 0
-
+        processed_count = 0
         logger.info(f'---- Processing {len(entries)} articles from {feed.name} ----')
-        
-        # Get cached existing slugs or refresh cache if needed
-        existing_slugs = self._get_cached_existing_slugs()
         
         for entry in entries:
             link = self._safe_get_string(entry, 'link')
@@ -286,71 +260,41 @@ class RSSService:
                 if published_date is None:
                     logger.warning(f"Failed to parse published date for '{title}' from {feed.name}. Storing with None.")
 
-                slug = generate_unique_slug(title, existing_slugs)
-                existing_slugs.add(slug)  # Add to cache to avoid duplicates in this batch
+                # Check if article already exists by link
+                existing_articles = self.s3_service.get_all_articles(limit=10000)
+                existing_links = {article.get('link') for article in existing_articles['articles']}
                 
-                article = NewsArticle(
-                    title=title,
-                    summary=summary,
-                    content=None,  # Will be None
-                    link=link,
-                    author=author,
-                    published_date=published_date,
-                    category=feed.category.value,
-                    source_name=feed.name,
-                    source_url=feed.url,
-                    image_url=image_url,
-                    slug=slug,
-                    created_at=datetime.now(),
-                    is_processed=True  # Marks as metadata-processed
-                )
+                if link in existing_links:
+                    logger.debug(f"Article already exists: {title}")
+                    continue
                 
-                articles_to_add.append(article)
+                # Prepare article data
+                article_data = {
+                    'title': title,
+                    'summary': summary,
+                    'content': None,  # Will be extracted later if needed
+                    'link': link,
+                    'author': author,
+                    'published_date': published_date.isoformat() if published_date else None,
+                    'category': feed.category.value,
+                    'source_name': feed.name,
+                    'source_url': feed.url,
+                    'image_url': image_url,
+                    'is_processed': True  # Marks as metadata-processed
+                }
+                
+                # Save to S3
+                article_name = self.s3_service.save_article(article_data)
+                if article_name:
+                    processed_count += 1
+                    logger.debug(f"Saved article: {title} -> {article_name}")
                 
             except Exception as e:
                 logger.error(f"Error extracting data for article '{self._safe_get_string(entry, 'title', 'N/A')}' from {feed.name}: {e}")
                 continue
         
-        # --- Batch Insertion with ON CONFLICT for deduplication ---
-        if not articles_to_add:
-            logger.info(f"No new articles to add from {feed.name}.")
-            return 0
-
-        try:
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
-            article_dicts = []
-            for article_obj in articles_to_add:
-                article_dict = {
-                    col.name: getattr(article_obj, col.name)
-                    for col in NewsArticle.__table__.columns if col.name != 'id'
-                }
-                article_dicts.append(article_dict)
-
-            if not article_dicts:
-                logger.info(f"No valid articles for batch insertion from {feed.name}.")
-                return 0
-
-            insert_stmt = sqlite_insert(NewsArticle).values(article_dicts)
-            on_conflict_stmt = insert_stmt.on_conflict_do_nothing(index_elements=['link'])
-            
-            if self.db is not None:
-                self.db.execute(on_conflict_stmt)
-
-            if self.db is not None:
-                self.db.commit()
-
-            processed_successfully_count = len(articles_to_add)
-
-            logger.info(f"Successfully attempted to add {processed_successfully_count} articles from {feed.name}.")
-
-        except Exception as e:
-            logger.error(f"Critical error during batch database insertion for {feed.name}: {e}")
-            if self.db is not None:
-                self.db.rollback()
-            return 0
-
-        return processed_successfully_count
+        logger.info(f"Successfully processed {processed_count} articles from {feed.name}.")
+        return processed_count
     
     async def _extract_with_newspaper3k(self, article_url: str) -> Optional[str]:
         try:
@@ -374,28 +318,7 @@ class RSSService:
         
         return None
         
-    def _get_cached_existing_slugs(self) -> set:
-        """
-        Get cached existing slugs or refresh cache if needed.
-        """
-        current_time = time.time()
-        
-        # Check if cache is valid
-        if (self._cache_timestamp is None or 
-            current_time - self._cache_timestamp > self._cache_ttl or
-            not self._slug_cache):
-            
-            # Refresh cache
-            if self.db is not None:
-                existing_slugs = {article.slug for article in self.db.query(NewsArticle.slug).filter(NewsArticle.slug.isnot(None)).all()}
-                self._slug_cache = existing_slugs
-                self._cache_timestamp = current_time
-                logger.debug(f"Refreshed slug cache with {len(existing_slugs)} existing slugs")
-            else:
-                self._slug_cache = set()
-                self._cache_timestamp = current_time
-        
-        return self._slug_cache.copy()
+
     
     def _extract_summary(self, entry) -> Optional[str]:
         """
@@ -610,19 +533,24 @@ class RSSService:
         """
         Clean HTML content for articles in batches.
         """
-        if self.db is None:
-            return {"status": "error", "message": "No database connection"}
-        
         try:
-            # Get articles without content or with raw content
-            articles_without_content = self.db.query(NewsArticle).filter(
-                (NewsArticle.content.is_(None)) | 
-                (NewsArticle.content == '') |
-                (NewsArticle.content.like('%<div class=%')) |
-                (NewsArticle.content.like('%<div id=%'))
-            ).limit(batch_size).all()
+            # Get all articles
+            all_articles = self.s3_service.get_all_articles(limit=10000)
+            articles = all_articles['articles']
             
-            if not articles_without_content:
+            # Filter articles that need content cleaning
+            articles_to_process = []
+            for article in articles:
+                content = article.get('content')
+                if (not content or 
+                    content == '' or 
+                    '<div class=' in content or 
+                    '<div id=' in content):
+                    articles_to_process.append(article)
+                    if len(articles_to_process) >= batch_size:
+                        break
+            
+            if not articles_to_process:
                 return {
                     "status": "success",
                     "message": "No articles found that need content cleaning",
@@ -630,41 +558,43 @@ class RSSService:
                 }
             
             processed_count = 0
-            for article in articles_without_content:
+            for article in articles_to_process:
                 try:
-                    if article.content:
+                    article_name = article.get('article_name')
+                    if not article_name:
+                        continue
+                        
+                    if article.get('content'):
                         # Clean existing content
-                        cleaned_content = self._sanitize_html_attributes(article.content)
-                        if cleaned_content != article.content:
-                            article.content = cleaned_content
-                            article.updated_at = datetime.now()
+                        cleaned_content = self._sanitize_html_attributes(article['content'])
+                        if cleaned_content != article['content']:
+                            self.s3_service.update_article(article_name, {
+                                'content': cleaned_content
+                            })
                             processed_count += 1
                     else:
                         # Try to extract content if missing
-                        if article.link:
-                            content, _ = await self.extract_article_content(article.link)
+                        if article.get('link'):
+                            content, _ = await self.extract_article_content(article['link'])
                             if content:
-                                article.content = content
-                                article.updated_at = datetime.now()
+                                self.s3_service.update_article(article_name, {
+                                    'content': content
+                                })
                                 processed_count += 1
                 
                 except Exception as e:
-                    logger.error(f"Error cleaning content for article {article.id}: {e}")
+                    logger.error(f"Error cleaning content for article {article_name}: {e}")
                     continue
-            
-            self.db.commit()
             
             return {
                 "status": "success",
                 "message": f"Successfully processed {processed_count} articles",
                 "articles_processed": processed_count,
-                "total_articles_in_batch": len(articles_without_content)
+                "total_articles_in_batch": len(articles_to_process)
             }
             
         except Exception as e:
             logger.error(f"Error in batch content cleaning: {e}")
-            if self.db is not None:
-                self.db.rollback()
             return {
                 "status": "error",
                 "message": f"Error during batch processing: {str(e)}",

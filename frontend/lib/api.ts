@@ -34,7 +34,7 @@ api.interceptors.response.use(
 );
 
 export interface NewsArticle {
-  id: number;
+  article_name: string;
   title: string;
   summary?: string;
   content?: string;
@@ -45,7 +45,6 @@ export interface NewsArticle {
   source_name: string;
   source_url?: string;
   image_url?: string;
-  slug?: string;
   is_processed: boolean;
   created_at: string;
   updated_at?: string;
@@ -54,19 +53,18 @@ export interface NewsArticle {
 export interface NewsArticleList {
   articles: NewsArticle[];
   total: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 export interface RSSFeed {
-  id: number;
   name: string;
   url: string;
   category: string;
   description?: string;
   is_active: boolean;
-  created_at: string;
+  created_at?: string;
   updated_at?: string;
 }
 
@@ -78,9 +76,8 @@ export const newsApi = {
     category?: string;
     source?: string;
     feeds?: string[];
-    page?: number;
-    per_page?: number;
-    article_id?: number;
+    limit?: number;
+    offset?: number;
   }): Promise<NewsArticleList> => {
     const apiParams: any = { ...params };
     if (params?.feeds && params.feeds.length > 0) {
@@ -90,22 +87,9 @@ export const newsApi = {
     return response.data;
   },
 
-  
-  // Get article by slug
-  getArticleBySlug: async (slug: string): Promise<NewsArticle> => {
-    const response = await api.get(`/api/news/articles/slug/${slug}`);
-    return response.data;
-  },
-
-  // Get articles by category
-  getArticlesByCategory: async (
-    category: string,
-    page: number = 1,
-    per_page: number = 20
-  ): Promise<NewsArticleList> => {
-    const response = await api.get(`/api/news/categories/${category}`, {
-      params: { page, per_page },
-    });
+  // Get article by name
+  getArticleByName: async (articleName: string): Promise<NewsArticle> => {
+    const response = await api.get(`/api/news/articles/${articleName}`);
     return response.data;
   },
 
@@ -116,19 +100,8 @@ export const newsApi = {
   },
 
   // Extract article content
-  extractArticleContent: async (articleId: number): Promise<any> => {
-    const response = await api.post(`/api/news/articles/${articleId}/extract`);
-    return response.data;
-  },
-
-  searchArticles: async (params: {
-    query: string;
-    category?: string;
-    time_filter?: string;
-    page?: number;
-    per_page?: number;
-  }): Promise<NewsArticleList> => {
-    const response = await api.get('/api/news/search', { params });
+  extractArticleContent: async (articleName: string): Promise<any> => {
+    const response = await api.post(`/api/news/articles/${articleName}/extract`);
     return response.data;
   },
 };

@@ -7,12 +7,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
+import os
+from dotenv import load_dotenv
 
-from database import init_db, get_db
 from routers import news
 from config.rss_feeds import get_all_feeds
 from services.scheduler_service import scheduler_service
+from services.s3_service import S3Service
 import logging
+
+# Load environment variables
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,27 +27,33 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
 
-    logger.info("Starting News 4U RSS Aggregator...")
-    init_db()
-    logger.info("Database initialized")
+    logger.info("Starting News 4U RSS Aggregator v2...")
     
-    from models.database import RSSFeed
-    db = next(get_db())
+    # Initialize S3 service and load feeds
     try:
+        s3_service = S3Service()
         feeds = get_all_feeds()
+        
+        # Convert feeds to dict format and save to S3
+        feeds_data = []
         for feed in feeds:
-            existing = db.query(RSSFeed).filter(RSSFeed.name == feed.name).first()
-            if not existing:
-                db_feed = RSSFeed(
-                    name=feed.name,
-                    url=feed.url,
-                    category=feed.category.value
-                )
-                db.add(db_feed)
-        db.commit()
-        logger.info(f"Loaded {len(feeds)} RSS feeds")
-    finally:
-        db.close()
+            feeds_data.append({
+                'name': feed.name,
+                'url': feed.url,
+                'category': feed.category.value,
+                'is_active': True
+            })
+        
+        s3_service.save_rss_feeds(feeds_data)
+        logger.info(f"Loaded {len(feeds)} RSS feeds to S3")
+        
+        # Update stats
+        s3_service.update_stats()
+        logger.info("Initial stats updated")
+        
+    except Exception as e:
+        logger.error(f"Error initializing S3 service: {e}")
+        raise e
     
     # Start the scheduler
     # scheduler_service.start()
@@ -57,9 +68,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="News 4U RSS Aggregator",
-    description="A professional news aggregation platform that fetches and categorizes news from popular RSS feeds.",
-    version="1.0.0",
+    title="News 4U RSS Aggregator v2",
+    description="A professional news aggregation platform that fetches and categorizes news from popular RSS feeds using S3 storage.",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -85,8 +96,8 @@ app.include_router(news.router)
 async def root():
     """Root endpoint."""
     return {
-        "message": "News 4U RSS Aggregator API",
-        "version": "1.0.0",
+        "message": "News 4U RSS Aggregator API v2",
+        "version": "2.0.0",
         "docs": "/docs",
         "health": "/api/news/health"
     }

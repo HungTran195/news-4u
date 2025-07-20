@@ -1,4 +1,4 @@
-export const ARTICLES_PER_PAGE = 12;
+export const ARTICLES_PER_PAGE = 20;
 
 export const CATEGORY_COLORS: Record<string, string> = {
   'tech': 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200',
