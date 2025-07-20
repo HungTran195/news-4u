@@ -22,7 +22,6 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
   }, []);
 
   useEffect(() => {
-    console.log("DEBUG---- selectedFeeds ----", selectedFeeds);
     setLocalSelection(selectedFeeds); // keep local selection in sync with parent
   }, [selectedFeeds]);
 

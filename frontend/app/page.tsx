@@ -321,7 +321,6 @@ function HomePageContent() {
     setSearchTotal(0);
     setActiveTab('news'); // Switch back to news tab
     try {
-      console.log("DEBUG---- handleFeedSelectionApply ----", feeds);
       setLoadingArticles(true);
       const params: any = {
         page: 1,

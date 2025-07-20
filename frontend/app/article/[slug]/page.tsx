@@ -19,9 +19,7 @@ export default function ArticlePage() {
         setLoading(true);
         setError(null);
         const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
-        console.log('Fetching article with slug:', slug);
         const articleData = await newsApi.getArticleBySlug(slug);
-        console.log('Article data received:', articleData);
         setArticle(articleData);
       } catch (err) {
         console.error('Error fetching article:', err);
