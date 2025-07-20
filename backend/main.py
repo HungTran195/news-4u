@@ -70,8 +70,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
-        "https://news-4u.onrender.com",  # Render frontend URL
-        "https://news-4u-frontend.onrender.com"  # Alternative Render URL format
+        "https://news-4u.onrender.com",
+        "https://news-4u.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
