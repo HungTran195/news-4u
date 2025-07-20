@@ -132,8 +132,8 @@ class RSSService:
         Extract full article content from URL using multiple strategies.
         """
         try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=self._headers) as client:
-                response = await client.get(article_url, headers=self._headers)
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                response = await client.get(article_url)
                 response.raise_for_status()
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
