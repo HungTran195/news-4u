@@ -23,8 +23,7 @@ class RSSFeed(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationship to raw feed data
-    raw_feeds = relationship("RawFeedData", back_populates="feed", cascade="all, delete-orphan")
+
     
     __table_args__ = (
         Index('idx_feed_category', 'category'),
@@ -32,24 +31,7 @@ class RSSFeed(Base):
     )
 
 
-class RawFeedData(Base):
-    """Model for storing raw RSS feed data before processing."""
-    __tablename__ = "raw_feed_data"
-    
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    feed_id = Column(Integer, ForeignKey("rss_feeds.id", ondelete="CASCADE"), nullable=False)
-    raw_content = Column(Text, nullable=False)  # Raw XML content
-    fetch_timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    status_code = Column(Integer)
-    error_message = Column(Text)
-    
-    # Relationship to RSS feed
-    feed = relationship("RSSFeed", back_populates="raw_feeds")
-    
-    __table_args__ = (
-        Index('idx_raw_feed_timestamp', 'fetch_timestamp'),
-        Index('idx_raw_feed_id', 'feed_id'),
-    )
+
 
 
 class NewsArticle(Base):

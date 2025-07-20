@@ -10,10 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
 from sqlalchemy import func
-from models.database import NewsArticle, RawFeedData, FeedFetchLog, RSSFeed
-
-class ContentExtractionRequest(BaseModel):
-    url: str
+from models.database import NewsArticle, FeedFetchLog, RSSFeed
 
 from database import get_db
 from services.rss_service import RSSService
@@ -218,13 +215,15 @@ async def get_articles_by_category(
     """Get articles by specific category."""
     service = RSSService(db)
     offset = (page - 1) * per_page
-    articles = service.get_articles_by_category(category, per_page, offset)
     
-    # Get total count
-    from models.database import NewsArticle
-    total = db.query(NewsArticle).filter(
-        NewsArticle.category == category.value
-    ).count()
+    query = db.query(NewsArticle).filter(NewsArticle.category == category.value)
+    total = query.count()
+    
+    articles = query.order_by(NewsArticle.published_date.desc().nullslast(), NewsArticle.created_at.desc()) \
+                   .offset(offset) \
+                   .limit(per_page) \
+                   .all()
+    
     total_pages = (total + per_page - 1) // per_page
     
     return NewsArticleList(
@@ -239,9 +238,8 @@ async def get_articles_by_category(
 @router.get("/feeds", response_model=List[RSSFeedResponse])
 async def get_feeds(db: Session = Depends(get_db)):
     """Get all configured RSS feeds."""
-    from models.database import RSSFeed
     feeds = db.query(RSSFeed).filter(RSSFeed.is_active == True).all()
-    return feeds
+    return [RSSFeedResponse.model_validate(feed) for feed in feeds]
 
 
 @router.get("/logs", response_model=List[FeedFetchLogResponse])
@@ -250,39 +248,34 @@ async def get_fetch_logs(
     db: Session = Depends(get_db)
 ):
     """Get recent RSS fetch logs."""
-    from models.database import FeedFetchLog
-    logs = db.query(FeedFetchLog).order_by(
-        FeedFetchLog.fetch_timestamp.desc()
-    ).limit(limit).all()
-    return logs
+    logs = db.query(FeedFetchLog).order_by(FeedFetchLog.fetch_timestamp.desc()).limit(limit).all()
+    return [FeedFetchLogResponse.model_validate(log) for log in logs]
 
 
 @router.get("/feeds/status")
 async def get_feeds_status(db: Session = Depends(get_db)):
-    """Get status and last fetch time for all feeds."""
-    from models.database import FeedFetchLog, RSSFeed
-    
-    # Get all feeds
+    """Get status of all RSS feeds."""
     feeds = db.query(RSSFeed).all()
     
-    # Get latest fetch log for each feed
+    # Get recent logs for each feed
     feed_status = []
     for feed in feeds:
-        latest_log = db.query(FeedFetchLog).filter(
+        recent_log = db.query(FeedFetchLog).filter(
             FeedFetchLog.feed_name == feed.name
-        ).order_by(
-            FeedFetchLog.fetch_timestamp.desc()
-        ).first()
+        ).order_by(FeedFetchLog.fetch_timestamp.desc()).first()
         
-        feed_status.append({
+        status = {
             "name": feed.name,
+            "url": feed.url,
             "category": feed.category,
             "is_active": feed.is_active,
-            "last_fetch": latest_log.fetch_timestamp if latest_log else None,
-            "last_status": latest_log.status if latest_log else None,
-            "last_articles_found": latest_log.articles_found if latest_log else 0,
-            "last_articles_processed": latest_log.articles_processed if latest_log else 0
-        })
+            "last_fetch": recent_log.fetch_timestamp if recent_log else None,
+            "last_status": recent_log.status if recent_log else None,
+            "articles_found": recent_log.articles_found if recent_log else 0,
+            "articles_processed": recent_log.articles_processed if recent_log else 0,
+            "error_message": recent_log.error_message if recent_log else None
+        }
+        feed_status.append(status)
     
     return feed_status
 
@@ -292,69 +285,67 @@ async def fetch_all_feeds(db: Session = Depends(get_db)):
     """Manually trigger fetching of all RSS feeds."""
     service = RSSService(db)
     result = await service.fetch_all_feeds()
-    return {
-        "message": "Feed fetching completed",
-        "result": result
-    }
+    return {"message": "Feed fetching completed", "result": result}
 
 
 @router.post("/fetch/{feed_name}")
 async def fetch_specific_feed(feed_name: str, db: Session = Depends(get_db)):
     """Manually trigger fetching of a specific RSS feed."""
-    from config.rss_feeds import get_all_feeds
+    from config.rss_feeds import get_feed_by_name
     
-    # Find the feed by name
-    feeds = get_all_feeds()
-    target_feed = None
-    for feed in feeds:
-        if feed.name.lower() == feed_name.lower():
-            target_feed = feed
-            break
-    
-    if not target_feed:
+    feed = get_feed_by_name(feed_name)
+    if not feed:
         raise HTTPException(status_code=404, detail=f"Feed '{feed_name}' not found")
     
     service = RSSService(db)
-    result = await service.fetch_feed_async(target_feed)
+    result = await service.fetch_feed_async(feed)
     
     return {
-        "message": f"Feed '{feed_name}' fetching completed",
-        "feed_name": feed_name,
-        "result": result
+        "feed_name": feed.name,
+        "category": feed.category.value,
+        **result
     }
 
 
 @router.get("/stats")
 async def get_stats(db: Session = Depends(get_db)):
     """Get news aggregation statistics."""
-    from models.database import NewsArticle, RSSFeed, FeedFetchLog
-    # TODO: optimize this. No need to run this query every time.
-    # Article counts by category
+    # Get articles by category
     category_stats = db.query(
         NewsArticle.category,
         func.count(NewsArticle.id).label('count')
     ).group_by(NewsArticle.category).all()
     
-    # Source counts
+    articles_by_category = {stat.category: stat.count for stat in category_stats}
+    
+    # Get articles by source
     source_stats = db.query(
         NewsArticle.source_name,
         func.count(NewsArticle.id).label('count')
     ).group_by(NewsArticle.source_name).all()
     
-    # Recent activity
-    recent_articles = db.query(NewsArticle).order_by(
-        NewsArticle.created_at.desc()
-    ).limit(5).all()
+    articles_by_source = {stat.source_name: stat.count for stat in source_stats}
     
-    # Feed status
+    # Get recent articles
+    recent_articles = db.query(NewsArticle).order_by(NewsArticle.created_at.desc()).limit(5).all()
+    
+    # Get feed counts
     active_feeds = db.query(RSSFeed).filter(RSSFeed.is_active == True).count()
     total_feeds = db.query(RSSFeed).count()
     
     return {
         "total_articles": db.query(NewsArticle).count(),
-        "articles_by_category": {cat: count for cat, count in category_stats},
-        "articles_by_source": {src: count for src, count in source_stats},
-        "recent_articles": recent_articles,
+        "articles_by_category": articles_by_category,
+        "articles_by_source": articles_by_source,
+        "recent_articles": [
+            {
+                "id": article.id,
+                "title": article.title,
+                "source_name": article.source_name,
+                "created_at": article.created_at
+            }
+            for article in recent_articles
+        ],
         "active_feeds": active_feeds,
         "total_feeds": total_feeds,
         "last_updated": datetime.now()
@@ -363,117 +354,74 @@ async def get_stats(db: Session = Depends(get_db)):
 
 @router.post("/articles/{article_id}/extract", response_model=NewsArticleResponse)
 async def extract_article_content(article_id: int, db: Session = Depends(get_db)):
-    """Manually extract content for a specific article and update missing fields."""
+    """Manually trigger content extraction for a specific article."""
     from models.database import NewsArticle
-    import logging
-    logger = logging.getLogger("extract_article_content")
-
+    
     article = db.query(NewsArticle).filter(NewsArticle.id == article_id).first()
-    if article is None:
+    if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-    if not getattr(article, "link", None):
-        raise HTTPException(status_code=400, detail="Article has no link to extract from")
-
-    service = RSSService(db)
-    # Extract content (this will also update image_url if missing)
-    if getattr(article, "content", None) is None or str(getattr(article, "content", "")).strip() == "":
-        logger.info(f"Extracting content for article {article_id}")
-        content, extracted_image_url = await service.extract_article_content(getattr(article, "link"))
-    else:
-        logger.info(f"Article {article_id} already has content, skipping extraction")
-        content = getattr(article, "content", None)
-        extracted_image_url = getattr(article, "image_url", None)
-
-    updated = False
-    updated_fields = []
-
-    # Update content if empty and new content is found
-    if (getattr(article, "content", None) is None or str(getattr(article, "content", "")).strip() == "") and content:
-        setattr(article, "content", content)
-        updated = True
-        updated_fields.append("content")
-
-    # Update image_url if it was extracted by the service
-    if extracted_image_url and (not getattr(article, "image_url", None) or str(getattr(article, "image_url", "")).strip() == ""):
-        setattr(article, "image_url", extracted_image_url)
-        updated = True
-        updated_fields.append("image_url")
-
-    # Try to extract author from meta tags if missing
-    if getattr(article, "author", None) is None or str(getattr(article, "author", "")).strip() == "":
-        try:
-            import httpx
-            from bs4 import BeautifulSoup
-            from bs4.element import Tag
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(getattr(article, "link"))
-                soup = BeautifulSoup(response.text, 'html.parser')
-                author_tag = soup.find('meta', attrs={'name': 'author'})
-                if author_tag and isinstance(author_tag, Tag) and author_tag.get('content'):
-                    author_val = author_tag.get('content', None)
-                    if isinstance(author_val, str):
-                        setattr(article, "author", author_val)
-                        updated = True
-                        updated_fields.append("author")
-        except Exception as e:
-            logger.warning(f"Could not extract author: {e}")
-
-    # Try to extract summary/description if missing
-    if getattr(article, "summary", None) is None or str(getattr(article, "summary", "")).strip() == "":
-        try:
-            import httpx
-            from bs4 import BeautifulSoup
-            from bs4.element import Tag
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(getattr(article, "link"))
-                soup = BeautifulSoup(response.text, 'html.parser')
-                desc_tag = soup.find('meta', attrs={'name': 'description'})
-                if desc_tag and isinstance(desc_tag, Tag) and desc_tag.get('content'):
-                    desc_val = desc_tag.get('content', None)
-                    if isinstance(desc_val, str):
-                        setattr(article, "summary", desc_val)
-                        updated = True
-                        updated_fields.append("summary")
-        except Exception as e:
-            logger.warning(f"Could not extract summary: {e}")
-
-    if updated:
-        setattr(article, "updated_at", datetime.now())
-        db.commit()
-        logger.info(f"Article {article_id} updated fields: {', '.join(updated_fields)}")
-    else:
-        logger.info(f"Article {article_id} extracted, but no new fields to update.")
-
-    return NewsArticleResponse.model_validate(article)
+    
+    if not article.link:
+        raise HTTPException(status_code=400, detail="Article has no link to extract content from")
+    
+    try:
+        service = RSSService(db)
+        content, extracted_image_url = await service.extract_article_content(article.link)
+        
+        updated = False
+        
+        # Update content if extracted
+        if content:
+            article.content = content
+            updated = True
+            logger.info(f"Successfully extracted content for article {article_id}")
+        
+        # Update image_url if extracted and missing
+        if extracted_image_url and (not article.image_url or article.image_url.strip() == ""):
+            article.image_url = extracted_image_url
+            updated = True
+            logger.info(f"Updated image URL for article {article_id}")
+        
+        # Update timestamp if any changes were made
+        if updated:
+            article.updated_at = datetime.now()
+            db.commit()
+            logger.info(f"Article {article_id} updated with extracted content")
+        else:
+            logger.warning(f"No content extracted for article {article_id}")
+        
+        return NewsArticleResponse.model_validate(article)
+        
+    except Exception as e:
+        logger.error(f"Error extracting content for article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error extracting content: {str(e)}")
 
 
 @router.get("/feeds/names")
 async def get_feed_names(db: Session = Depends(get_db)):
-    """Get list of all feed names."""
-    from models.database import RSSFeed
-    
+    """Get list of feed names."""
     feeds = db.query(RSSFeed.name).all()
-    return {"feed_names": [feed[0] for feed in feeds]}
+    return [feed.name for feed in feeds]
 
 
 @router.get("/scheduler/status")
 async def get_scheduler_status():
-    """Get the status of the scheduler and its jobs."""
-    return scheduler_service.get_job_status()
+    """Get scheduler status."""
+    return {"status": "running" if scheduler_service.scheduler.running else "stopped"}
 
 
 @router.post("/scheduler/start")
 async def start_scheduler():
     """Start the scheduler."""
     scheduler_service.start()
-    return {"message": "Scheduler started successfully"}
+    return {"message": "Scheduler started"}
 
 
 @router.post("/scheduler/stop")
 async def stop_scheduler():
     """Stop the scheduler."""
     scheduler_service.stop()
-    return {"message": "Scheduler stopped successfully"}
+    return {"message": "Scheduler stopped"}
 
 
 @router.get("/search", response_model=NewsArticleList)
@@ -485,57 +433,42 @@ async def search_articles(
     per_page: int = Query(20, ge=1, le=100, description="Articles per page"),
     db: Session = Depends(get_db)
 ):
-    """Search articles in the database with pagination."""
-    from services.rss_service import RSSService
-    from models.database import NewsArticle
-    from sqlalchemy import or_
-    from datetime import datetime, timedelta
+    """Search articles by query with optional filters."""
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Search query is required")
     
-    service = RSSService(db)
     offset = (page - 1) * per_page
     
     # Build search query
-    search_query = db.query(NewsArticle)
-    
-    # Apply search filter
-    if query.strip():
-        search_term = f"%{query.strip()}%"
-        search_query = search_query.filter(
-            or_(
-                NewsArticle.title.ilike(search_term),
-                NewsArticle.summary.ilike(search_term),
-                NewsArticle.content.ilike(search_term)
-            )
-        )
+    search_query = db.query(NewsArticle).filter(
+        NewsArticle.title.contains(query) | 
+        NewsArticle.summary.contains(query) |
+        NewsArticle.content.contains(query)
+    )
     
     # Apply category filter
-    if category and category != "all":
+    if category != "all":
         search_query = search_query.filter(NewsArticle.category == category)
     
     # Apply time filter
-    if time_filter and time_filter != "all":
-        now = datetime.now()
-        if time_filter == "1h":
-            time_threshold = now - timedelta(hours=1)
-        elif time_filter == "24h":
-            time_threshold = now - timedelta(days=1)
-        elif time_filter == "7d":
-            time_threshold = now - timedelta(days=7)
-        elif time_filter == "1m":
-            time_threshold = now - timedelta(days=30)
-        else:
-            time_threshold = now - timedelta(days=1)  # default to 24h
-        
-        search_query = search_query.filter(NewsArticle.published_date >= time_threshold)
+    if time_filter == "24h":
+        time_threshold = datetime.now() - timedelta(hours=24)
+        search_query = search_query.filter(NewsArticle.created_at >= time_threshold)
+    elif time_filter == "7d":
+        time_threshold = datetime.now() - timedelta(days=7)
+        search_query = search_query.filter(NewsArticle.created_at >= time_threshold)
+    elif time_filter == "30d":
+        time_threshold = datetime.now() - timedelta(days=30)
+        search_query = search_query.filter(NewsArticle.created_at >= time_threshold)
     
-    # Get total count for pagination
+    # Get total count
     total = search_query.count()
     
     # Get paginated results
-    articles = search_query.order_by(
-        NewsArticle.published_date.desc().nullslast(), 
-        NewsArticle.created_at.desc()
-    ).offset(offset).limit(per_page).all()
+    articles = search_query.order_by(NewsArticle.published_date.desc().nullslast(), NewsArticle.created_at.desc()) \
+                          .offset(offset) \
+                          .limit(per_page) \
+                          .all()
     
     total_pages = (total + per_page - 1) // per_page
     
@@ -548,58 +481,37 @@ async def search_articles(
     )
 
 
-"""
---------------------------------
-Admin endpoints
-These endpoints are used to clean up the database.
---------------------------------
-"""
-# TODO: Add authentication to these endpoints.
+# Admin endpoints - Note: These endpoints should be protected with authentication in production
 @router.delete("/admin/cleanup/all")
 async def cleanup_all_data(db: Session = Depends(get_db)):
     """Clean up all data from the database."""
-    from services.rss_service import RSSService
     service = RSSService(db)
-    logger.warning("---- Cleaning up all data ----")
     await service.cleanup_all_data()
     return {"message": "All data cleaned up successfully"}
+
 
 @router.delete("/admin/cleanup/feed/{feed_name}")
 async def cleanup_feed_data(feed_name: str, db: Session = Depends(get_db)):
     """Clean up data for a specific feed."""
-    from services.rss_service import RSSService
     service = RSSService(db)
-    logger.warning(f"---- Cleaning up data for feed '{feed_name}' ----")
     await service.cleanup_feed_data(feed_name)
-    return {"message": f"Data for feed '{feed_name}' cleaned up successfully"} 
+    return {"message": f"Data for feed '{feed_name}' cleaned up successfully"}
+
 
 @router.delete("/admin/cleanup/article/{article_id}")
 async def delete_article_content(article_id: int, db: Session = Depends(get_db)):
-    """Clean up data for a specific article."""
-    from services.rss_service import RSSService
+    """Delete content for a specific article."""
     service = RSSService(db)
-    logger.warning(f"---- Deleting content for article '{article_id}' ----")
     await service.delete_article_content(article_id)
-    return {"message": f"Content for article '{article_id}' deleted successfully"}
+    return {"message": f"Content for article {article_id} deleted successfully"}
+
 
 @router.post("/admin/content/clean-batch")
 async def clean_content_batch(
     batch_size: int = Query(100, ge=10, le=1000, description="Number of articles to process per batch"),
     db: Session = Depends(get_db)
 ):
-    """
-    Clean HTML content for all articles in the database by removing class names, IDs, and data attributes.
-    This endpoint processes articles in batches to avoid memory issues with large databases.
-    """
-    from services.rss_service import RSSService
+    """Clean content for articles in batches."""
     service = RSSService(db)
-    logger.info(f"---- Starting batch content cleaning with batch size {batch_size} ----")
-    
     result = await service.clean_content_batch(batch_size)
-    
-    if result["status"] == "success":
-        logger.info(f"---- Batch content cleaning completed: {result['message']} ----")
-    else:
-        logger.error(f"---- Batch content cleaning failed: {result['message']} ----")
-    
     return result

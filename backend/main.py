@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
 
-    print("Starting News 4U RSS Aggregator...")
+    logger.info("Starting News 4U RSS Aggregator...")
     init_db()
-    print("Database initialized")
+    logger.info("Database initialized")
     
     from models.database import RSSFeed
     db = next(get_db())
@@ -40,20 +40,20 @@ async def lifespan(app: FastAPI):
                 )
                 db.add(db_feed)
         db.commit()
-        print(f"Loaded {len(feeds)} RSS feeds")
+        logger.info(f"Loaded {len(feeds)} RSS feeds")
     finally:
         db.close()
     
     # Start the scheduler
-    scheduler_service.start()
-    print("Scheduler started with cronjobs")
+    # scheduler_service.start()
+    logger.info("Scheduler started with cronjobs")
     
     yield
     
     # Stop the scheduler
     scheduler_service.stop()
-    print("Scheduler stopped")
-    print("Shutting down News 4U RSS Aggregator...")
+    logger.info("Scheduler stopped")
+    logger.info("Shutting down News 4U RSS Aggregator...")
 
 
 app = FastAPI(

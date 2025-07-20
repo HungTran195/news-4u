@@ -3,7 +3,7 @@ Site-specific content extractors for different news websites.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, List
 from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
@@ -198,327 +198,185 @@ class BaseSiteExtractor(ABC):
                     parent_a.replace_with(img_copy)
                 
                 # Handle caption prioritization
-                # Priority: data-caption > alt > title
-                caption = None
-                if img_tag.get('data-caption'):
-                    caption = img_tag.get('data-caption')
-                elif img_tag.get('alt'):
-                    caption = img_tag.get('alt')
-                elif img_tag.get('title'):
-                    caption = img_tag.get('title')
-                
-                # If we found a caption, set it as alt and remove other caption attributes
-                if caption:
+                caption = parent_a.get('title', '') or parent_a.get_text(strip=True)
+                if caption and not img_tag.get('alt'):
                     img_tag['alt'] = caption
-                    # Remove other caption attributes to avoid duplication
-                    if img_tag.get('data-caption'):
-                        del img_tag['data-caption']
-                    if img_tag.get('title'):
-                        del img_tag['title']
-            
-            # For standalone img tags, still handle caption prioritization
-            else:
-                caption = None
-                if img_tag.get('data-caption'):
-                    caption = img_tag.get('data-caption')
-                elif img_tag.get('alt'):
-                    caption = img_tag.get('alt')
-                elif img_tag.get('title'):
-                    caption = img_tag.get('title')
-                
-                # If we found a caption, set it as alt and remove other caption attributes
-                if caption:
-                    img_tag['alt'] = caption
-                    # Remove other caption attributes to avoid duplication
-                    if img_tag.get('data-caption'):
-                        del img_tag['data-caption']
-                    if img_tag.get('title'):
-                        del img_tag['title']
-            
-            # if img tag has src, remove srcset if it exist
-            if img_tag.get('src'):
-                srcset = img_tag.get('srcset')
-                if srcset:
-                    img_tag['srcset'] = ''
-                
 
-            # If img tag has style position absolute, remove it
-            if img_tag.get('style'):
-                style = img_tag.get('style')
-                if style:
-                    style = style.replace('position: absolute;', '')
-                    style = style.replace('position:absolute;', '')
-                    img_tag['style'] = style
-
-    def extract_with_fallbacks(self, soup: BeautifulSoup, base_url: str, primary_selectors: List[str], fallback_selectors: Optional[List[str]] = None) -> Optional[str]:
-        """Generic extraction method with fallback selectors."""
+    def extract_with_fallbacks(self, soup: BeautifulSoup, base_url: str, primary_selectors: List[str]) -> Optional[str]:
+        """
+        Extract content using multiple CSS selectors with fallback strategy.
+        """
         try:
             # Try primary selectors first
             for selector in primary_selectors:
-                if selector.startswith('.'):
-                    content_area = soup.find('div', class_=selector[1:])  # type: ignore
-                elif selector.startswith('#'):
-                    content_area = soup.find('div', id=selector[1:])  # type: ignore
-                else:
-                    content_area = soup.find(selector)
-                
+                content_area = soup.select_one(selector)
                 if content_area:
+                    # Remove unwanted elements
                     self.remove_ads_and_unwanted_elements(content_area)
                     self.clean_image_tags(content_area)
-                    content_html = str(content_area)
-                    return self.clean_html_content(content_html)
-            
-            # Try fallback selectors if provided
-            if fallback_selectors:
-                for selector in fallback_selectors:
-                    if selector.startswith('.'):
-                        content_area = soup.find('div', class_=selector[1:])  # type: ignore
-                    elif selector.startswith('#'):
-                        content_area = soup.find('div', id=selector[1:])  # type: ignore
-                    else:
-                        content_area = soup.find(selector)
                     
-                    if content_area:
-                        self.remove_ads_and_unwanted_elements(content_area)
-                        self.clean_image_tags(content_area)
-                        content_html = str(content_area)
-                        return self.clean_html_content(content_html)
+                    # Extract and clean content
+                    content = self.clean_html_content(str(content_area))
+                    if content and len(content.strip()) > 100:  # Minimum content length
+                        return content
             
             return None
             
         except Exception as e:
-            print(f"Error in extract_with_fallbacks: {e}")
+            logger.error(f"Error in extract_with_fallbacks: {e}")
             return None
+
 
 class Kenh14Extractor(BaseSiteExtractor):
-    " Content extractor for kenh14.vn."""
+    """Extractor for Kenh14.vn"""
     
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        """Extract content from kenh14.vn using the detail-content class."""
-        primary_selectors = ['.detail-content', '.knc-content']
-        fallback_selectors = ['article']
-        return self.extract_with_fallbacks(soup, base_url, primary_selectors, fallback_selectors)
+        primary_selectors = ['div.detail-content', 'div.knc-content', 'article']
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
 
 class VnExpressExtractor(BaseSiteExtractor):
-    """Content extractor for vnexpress.net."""
+    """Extractor for VnExpress.net"""
     
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        """Extract content from vnexpress.net."""
-        try:
-            # Find the container first
-            container = soup.find('div', class_='container')  # type: ignore
-            if not container:
-                return None
-            
-            # Find the sidebar-1 content area inside container
-            content_area = container.find('div', class_='sidebar-1')  # type: ignore
-            
-            if not content_area:
-                # Fallback: try other common selectors
-                primary_selectors = ['.fck_detail']
-                fallback_selectors = ['article']
-                return self.extract_with_fallbacks(soup, base_url, primary_selectors, fallback_selectors)
-            
-            self.remove_ads_and_unwanted_elements(content_area)
-            self.clean_image_tags(content_area)
-            content_html = str(content_area)
-            return self.clean_html_content(content_html)
-            
-        except Exception as e:
-            print(f"Error extracting content from vnexpress.net: {e}")
-            return None
+        primary_selectors = ['div.fck_detail', 'div.sidebar_1', 'div.content_detail', 'div.article_content', 'article']
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
+
 
 class TuoiTreExtractor(BaseSiteExtractor):
-    """Content extractor for tuoitre.vn."""
+    """Extractor for TuoiTre.vn"""
     
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        """Extract content from tuoitre.vn."""
-        try:
-            # Find five with data-role = content
-            content_area = soup.find('div', attrs={'data-role': 'content'})
-            if not content_area:
-                return None
-            
-            self.remove_ads_and_unwanted_elements(content_area)
-            self.clean_image_tags(content_area)
-            content_html = str(content_area)
-            return self.clean_html_content(content_html)
-            
-        except Exception as e:
-            print(f"Error extracting content from tuoitre.vn: {e}")
-            return None
+        primary_selectors = ['div[  data-role="content"]']
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
 
 class TechCrunchExtractor(BaseSiteExtractor):
-    """Content extractor for techcrunch.com."""
+    """Extractor for TechCrunch.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        primary_selectors = ['.entry-content']
+        primary_selectors = ['div.entry-content']
         return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
 
 class BBCExtractor(BaseSiteExtractor):
-    """Content extractor for bbc.com."""
+    """Extractor for BBC.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        primary_selectors = ['article']
+        primary_selectors = ['article', 'div[data-component="text-block"]']
         return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
 
 class CNBCExtractor(BaseSiteExtractor):
-    """Content extractor for cnbc.com."""
+    """Extractor for CNBC.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        primary_selectors = ['.ArticleBody-articleBody']
+        primary_selectors = ['div[data-module="ArticleBody"]']
         return self.extract_with_fallbacks(soup, base_url, primary_selectors)
 
+
 class TheVergeExtractor(BaseSiteExtractor):
-    """Content extractor for theverge.com."""
+    """Extractor for TheVerge.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        try:
-            #  find class like duet--layout--entry-body-container
-            content_area = soup.find('div', class_="duet--layout--entry-body-container")
-            # Save content_area to file
-            with open('theverge_content_area.html', 'w+', encoding='utf-8') as f:
-                f.write(str(content_area))
-            if not content_area:
-                logger.warning(f"---- no content_area ----")
-                return None
-            self.remove_ads_and_unwanted_elements(content_area)
-            self.clean_image_tags(content_area)
-            content_html = str(content_area)
-            # Save content_html to file
-            with open('theverge_content_html.html', 'w+', encoding='utf-8') as f:
-                f.write(content_html)
-            return self.clean_html_content(content_html)
-        except Exception as e:
-            print(f"Error extracting content from theverge.com: {e}")
-            return None
+        primary_selectors = ['div.duet--layout--entry-body-container', 'article']
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
 
 
 class EngadgetExtractor(BaseSiteExtractor):
-    """Content extractor for engadget.com."""
+    """Extractor for Engadget.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('div', class_="caas-body")
-        if not content_area:
-            return None
-        self.remove_ads_and_unwanted_elements(content_area)
-        self.clean_image_tags(content_area)
-        content_html = str(content_area)
-        return self.clean_html_content(content_html)
+        primary_selectors = [
+            'div.caas-body',
+            'div.article-body'
+        ]
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
 
 
 class ABCNewsExtractor(BaseSiteExtractor):
-    """Content extractor for abcnews.go.com."""
+    """Extractor for ABCNews.go.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
         # Get property data-testid = prism-article-body
-        content_area = soup.find('div',  attrs={'data-testid': 'prism-article-body'})
-        if not content_area:
-            return None
-        self.remove_ads_and_unwanted_elements(content_area)
-        self.clean_image_tags(content_area)
-        content_html = str(content_area)
-        return self.clean_html_content(content_html)
+        primary_selectors = [
+            'div[data-testid="prism-article-body"]',
+            'div.article-body',
+            'div.content'
+        ]
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
 
 
 class NBCNewsExtractor(BaseSiteExtractor):
-    """Content extractor for nbcnews.com."""
+    """Extractor for NBCNews.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('div', class_="article-body__content")
-        if not content_area:
-            return None
-        self.remove_ads_and_unwanted_elements(content_area)
-        self.clean_image_tags(content_area)
-        content_html = str(content_area)
-        return self.clean_html_content(content_html)
+        primary_selectors = [
+            'div.article-body__content',
+            'div.article-content'
+        ]
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
+
 
 class CBSNewsExtractor(BaseSiteExtractor):
-    """Content extractor for cbsnews.com."""
+    """Extractor for CBSNews.com"""
+    
     def extract_content(self, soup: BeautifulSoup, base_url: str) -> Optional[str]:
-        content_area = soup.find('section', class_="content__body")
-        if not content_area:
-            return None
-        self.remove_ads_and_unwanted_elements(content_area)
-        self.clean_image_tags(content_area)
-        content_html = str(content_area)
-        return self.clean_html_content(content_html)
+        primary_selectors = ['section.content__body', 'div.article-content']
+        return self.extract_with_fallbacks(soup, base_url, primary_selectors)
 
-# Domain to extractor mapping for O(1) lookup
-SITE_EXTRACTORS_MAP = {
-    'kenh14.vn': Kenh14Extractor(),
-    'vnexpress.net': VnExpressExtractor(),
-    'tuoitre.vn': TuoiTreExtractor(),
-    'techcrunch.com': TechCrunchExtractor(),
-    'bbc.com': BBCExtractor(),
-    'cnbc.com': CNBCExtractor(),
-    'theverge.com': TheVergeExtractor(),
-    'engadget.com': EngadgetExtractor(),
-    'abcnews.go.com': ABCNewsExtractor(),
-    'nbcnews.com': NBCNewsExtractor(),
-    'cbsnews.com': CBSNewsExtractor(),
-}
 
-# Alternative domains that should use the same extractor
-DOMAIN_ALIASES = {
-    'www.kenh14.vn': 'kenh14.vn',
-    'www.vnexpress.net': 'vnexpress.net',
-    'www.tuoitre.vn': 'tuoitre.vn',
-    'www.techcrunch.com': 'techcrunch.com',
-    'www.bbc.com': 'bbc.com',
-    'www.cnbc.com': 'cnbc.com',
-    'www.theverge.com': 'theverge.com',
-    'tech.kenh14.vn': 'kenh14.vn',
-    'vnexpress.net': 'vnexpress.net',
-    'www.engadget.com': 'engadget.com',
-    'www.nbcnews.com': 'nbcnews.com',
-    'www.abcnews.go.com': 'abcnews.go.com',
-    'www.cbsnews.com': 'cbsnews.com'
-}
-
+# Site Extractor Manager
 class SiteExtractorManager:
-    """Manager for site-specific content extractors."""
+    """Manages site-specific content extractors."""
     
     def __init__(self):
-        pass
-
+        self.extractors = {}
+        self._register_default_extractors()
+    
     def get_domain(self, url: str) -> str:
-        """Get the domain of the given URL."""
-        return urlparse(url).netloc.replace('www.', '')
+        """Extract domain from URL."""
+        return urlparse(url).netloc.lower()
     
     def get_extractor(self, url: str) -> Optional[BaseSiteExtractor]:
-        """Get the appropriate extractor for the given URL with O(1) lookup."""
+        """Get appropriate extractor for the given URL."""
         domain = self.get_domain(url)
         
-        # Direct lookup in the main map
-        if domain in SITE_EXTRACTORS_MAP:
-            return SITE_EXTRACTORS_MAP[domain]
+        # Check for exact domain match
+        if domain in self.extractors:
+            return self.extractors[domain]
         
-        # Check domain aliases for subdomains or variations
-        if domain in DOMAIN_ALIASES:
-            canonical_domain = DOMAIN_ALIASES[domain]
-            if canonical_domain in SITE_EXTRACTORS_MAP:
-                return SITE_EXTRACTORS_MAP[canonical_domain]
+        # Check for partial domain match
+        for registered_domain, extractor in self.extractors.items():
+            if registered_domain in domain or domain in registered_domain:
+                return extractor
         
         return None
     
     def extract_content(self, soup: BeautifulSoup, url: str) -> Optional[str]:
-        """Extract content using the appropriate site-specific extractor."""
+        """Extract content using the appropriate extractor."""
         extractor = self.get_extractor(url)
         if extractor:
             return extractor.extract_content(soup, url)
         return None
     
-    def add_extractor_for_domain(self, domain: str, extractor: BaseSiteExtractor) -> None:
-        """Add a new extractor for a specific domain."""
-        SITE_EXTRACTORS_MAP[domain] = extractor
-    
-    def get_supported_domains(self) -> List[str]:
-        """Get list of all supported domains."""
-        return list(SITE_EXTRACTORS_MAP.keys())
-    
-    def get_extractor_stats(self) -> Dict[str, Any]:
-        """Get statistics about extractors."""
-        return {
-            'total_extractors': len(SITE_EXTRACTORS_MAP),
-            'total_aliases': len(DOMAIN_ALIASES),
-            'supported_domains': list(SITE_EXTRACTORS_MAP.keys()),
-            'domain_aliases': DOMAIN_ALIASES
-        }
+    def _register_default_extractors(self):
+        """Register default extractors for known sites."""
+        self.extractors.update({
+            'kenh14.vn': Kenh14Extractor(),
+            'vnexpress.net': VnExpressExtractor(),
+            'tuoitre.vn': TuoiTreExtractor(),
+            'techcrunch.com': TechCrunchExtractor(),
+            'bbc.com': BBCExtractor(),
+            'cnbc.com': CNBCExtractor(),
+            'theverge.com': TheVergeExtractor(),
+            'engadget.com': EngadgetExtractor(),
+            'abcnews.go.com': ABCNewsExtractor(),
+            'nbcnews.com': NBCNewsExtractor(),
+            'cbsnews.com': CBSNewsExtractor(),
+        })
 
 
-# Global instance for easy access
+# Global instance
 site_extractor_manager = SiteExtractorManager() 

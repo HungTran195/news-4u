@@ -1,6 +1,6 @@
-# News 4U Backend
+# News Aggregator Backend
 
-FastAPI backend for the News 4U RSS aggregator with SQLite database.
+FastAPI backend for a professional news aggregation platform with SQLite database support.
 
 ## Quick Start
 
@@ -31,18 +31,17 @@ The API will be available at http://localhost:8000
 
 ---
 
-## Project Structure & Usage
+## Project Structure
 
 ```text
 backend/
-├── config/            # Configuration files (e.g., RSS feed sources)
+├── config/            # Configuration files (RSS feed sources)
 ├── models/            # SQLAlchemy ORM models (database tables)
 ├── routers/           # FastAPI route definitions (API endpoints)
 ├── schemas/           # Pydantic schemas for request/response validation
-├── services/          # Business logic and integration (RSS, Google News)
+├── services/          # Business logic and integrations (RSS, content extraction)
 ├── scripts/           # Utility scripts (DB setup, initialization)
-├── __pycache__/       # Python bytecode cache (auto-generated)
-├── venv/              # Python virtual environment (local, not in repo)
+├── lib/               # Utility functions and helpers
 ├── requirements.txt   # Python dependencies
 ├── Dockerfile         # Docker build file
 ├── main.py            # FastAPI application entry point
@@ -53,16 +52,13 @@ backend/
 ### Folder & File Usage
 
 - **config/**: Centralized configuration, e.g., `rss_feeds.py` lists all RSS sources and categories.
-- **models/**: SQLAlchemy ORM models. Each file defines tables and relationships (e.g., `database.py`).
-- **routers/**: FastAPI API endpoints. Main API logic is in `news.py`.
+- **models/**: SQLAlchemy ORM models defining database tables and relationships.
+- **routers/**: FastAPI API endpoints containing the main API logic.
 - **schemas/**: Pydantic models for validating and serializing API requests and responses.
-- **services/**: Core business logic, such as fetching/parsing RSS feeds (`rss_service.py`) and Google News integration (`google_news_service.py`).
-- **scripts/**: Utility scripts for database setup and initialization (e.g., `init_db.py`).
-- **main.py**: FastAPI app entry point. Includes app setup, middleware, and router registration.
-- **database.py**: Sets up the SQLAlchemy engine, session, and database initialization logic.
-- **requirements.txt**: Lists all Python dependencies for the backend.
-- **Dockerfile**: Containerizes the backend for deployment.
-- **README.md**: This documentation file.
+- **services/**: Core business logic including RSS feed processing and content extraction.
+- **scripts/**: Utility scripts for database setup and initialization.
+- **main.py**: FastAPI app entry point with app setup, middleware, and router registration.
+- **database.py**: SQLAlchemy engine, session, and database initialization logic.
 
 ---
 
@@ -72,7 +68,7 @@ The backend uses SQLite by default. The database file will be created as `news_4
 
 ### Python Shell Access
 
-For more advanced database operations:
+For advanced database operations:
 
 ```bash
 # Activate virtual environment
@@ -140,8 +136,9 @@ Check the health status of the API and database.
 Get articles with optional filtering and pagination.
 
 **Query Parameters:**
-- `category` (optional): Filter by category (`tech`, `finance`, `global_news`)
+- `category` (optional): Filter by category
 - `source` (optional): Filter by source name
+- `feeds` (optional): Comma-separated list of feed names to filter by
 - `page` (optional): Page number (default: 1)
 - `per_page` (optional): Articles per page (default: 20, max: 100)
 
@@ -162,8 +159,8 @@ GET /api/news/articles?category=tech&page=1&per_page=10
       "author": "John Doe",
       "published_date": "2024-01-15T10:00:00",
       "category": "tech",
-      "source_name": "TechCrunch",
-      "source_url": "https://techcrunch.com",
+      "source_name": "Example Source",
+      "source_url": "https://example.com",
       "image_url": "https://example.com/image.jpg",
       "is_processed": true,
       "created_at": "2024-01-15T10:30:00",
@@ -183,44 +180,25 @@ Get a specific article by ID.
 **Path Parameters:**
 - `article_id` (integer): Article ID
 
-**Example Request:**
-```
-GET /api/news/articles/123
-```
+**Response:** Same format as individual article in the list response.
 
-**Response:**
-```json
-{
-  "id": 123,
-  "title": "Example Article Title",
-  "summary": "Article summary...",
-  "link": "https://example.com/article",
-  "author": "John Doe",
-  "published_date": "2024-01-15T10:00:00",
-  "category": "tech",
-  "source_name": "TechCrunch",
-  "source_url": "https://techcrunch.com",
-  "image_url": "https://example.com/image.jpg",
-  "is_processed": true,
-  "created_at": "2024-01-15T10:30:00",
-  "updated_at": null
-}
-```
+#### GET `/api/news/articles/slug/{slug}`
+Get a specific article by slug.
+
+**Path Parameters:**
+- `slug` (string): Article slug
+
+**Response:** Same format as individual article in the list response.
 
 #### GET `/api/news/categories/{category}`
 Get articles by specific category.
 
 **Path Parameters:**
-- `category` (string): Category name (`tech`, `finance`, `global_news`)
+- `category` (string): Category name
 
 **Query Parameters:**
 - `page` (optional): Page number (default: 1)
 - `per_page` (optional): Articles per page (default: 20, max: 100)
-
-**Example Request:**
-```
-GET /api/news/categories/tech?page=1&per_page=15
-```
 
 **Response:** Same format as `/api/news/articles`
 
@@ -234,13 +212,9 @@ Get list of all news sources.
 **Response:**
 ```json
 [
-  "TechCrunch",
-  "The Verge",
-  "Bloomberg",
-  "Yahoo Finance",
-  "Financial Times",
-  "BBC News",
-  "Reuters World News"
+  "Source 1",
+  "Source 2",
+  "Source 3"
 ]
 ```
 
@@ -252,14 +226,26 @@ Get all configured RSS feeds.
 [
   {
     "id": 1,
-    "name": "TechCrunch",
-    "url": "https://techcrunch.com/feed/",
+    "name": "Example Feed",
+    "url": "https://example.com/feed/",
     "category": "tech",
-    "description": "Latest technology news and startup information",
+    "description": "Example feed description",
     "is_active": true,
     "created_at": "2024-01-15T10:00:00",
     "updated_at": null
   }
+]
+```
+
+#### GET `/api/news/feeds/names`
+Get list of feed names.
+
+**Response:**
+```json
+[
+  "Feed 1",
+  "Feed 2",
+  "Feed 3"
 ]
 ```
 
@@ -280,7 +266,7 @@ Manually trigger fetching of all RSS feeds.
     "total_feeds": 7,
     "results": [
       {
-        "feed_name": "TechCrunch",
+        "feed_name": "Example Feed",
         "category": "tech",
         "status": "success",
         "articles_found": 20,
@@ -292,23 +278,26 @@ Manually trigger fetching of all RSS feeds.
 }
 ```
 
+#### POST `/api/news/fetch/{feed_name}`
+Manually trigger fetching of a specific RSS feed.
+
+**Path Parameters:**
+- `feed_name` (string): Name of the feed to fetch
+
+**Response:** Same format as individual feed result in the fetch all response.
+
 #### GET `/api/news/logs`
 Get recent RSS fetch logs.
 
 **Query Parameters:**
 - `limit` (optional): Number of logs to return (default: 50, max: 100)
 
-**Example Request:**
-```
-GET /api/news/logs?limit=20
-```
-
 **Response:**
 ```json
 [
   {
     "id": 1,
-    "feed_name": "TechCrunch",
+    "feed_name": "Example Feed",
     "fetch_timestamp": "2024-01-15T10:30:00",
     "status": "success",
     "articles_found": 20,
@@ -318,6 +307,22 @@ GET /api/news/logs?limit=20
   }
 ]
 ```
+
+---
+
+### Search
+
+#### GET `/api/news/search`
+Search articles by query with optional filters.
+
+**Query Parameters:**
+- `query` (required): Search query string
+- `category` (optional): Filter by category (default: "all")
+- `time_filter` (optional): Time filter (default: "24h")
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Articles per page (default: 20, max: 100)
+
+**Response:** Same format as `/api/news/articles`
 
 ---
 
@@ -336,19 +341,15 @@ Get news aggregation statistics.
     "global_news": 40
   },
   "articles_by_source": {
-    "TechCrunch": 25,
-    "The Verge": 25,
-    "Bloomberg": 30,
-    "Yahoo Finance": 15,
-    "Financial Times": 15,
-    "BBC News": 20,
-    "Reuters World News": 20
+    "Source 1": 25,
+    "Source 2": 25,
+    "Source 3": 30
   },
   "recent_articles": [
     {
       "id": 1,
       "title": "Recent Article",
-      "source_name": "TechCrunch",
+      "source_name": "Example Source",
       "created_at": "2024-01-15T10:30:00"
     }
   ],
@@ -357,6 +358,50 @@ Get news aggregation statistics.
   "last_updated": "2024-01-15T10:30:00"
 }
 ```
+
+---
+
+### Content Extraction
+
+#### POST `/api/news/articles/{article_id}/extract`
+Manually trigger content extraction for a specific article.
+
+**Path Parameters:**
+- `article_id` (integer): Article ID
+
+**Response:** Updated article with extracted content.
+
+---
+
+### Scheduler Management
+
+#### GET `/api/news/scheduler/status`
+Get scheduler status.
+
+#### POST `/api/news/scheduler/start`
+Start the scheduler.
+
+#### POST `/api/news/scheduler/stop`
+Stop the scheduler.
+
+---
+
+### Admin Operations
+
+#### DELETE `/api/news/admin/cleanup/all`
+Clean up all data from the database.
+
+#### DELETE `/api/news/admin/cleanup/feed/{feed_name}`
+Clean up data for a specific feed.
+
+#### DELETE `/api/news/admin/cleanup/article/{article_id}`
+Delete content for a specific article.
+
+#### POST `/api/news/admin/content/clean-batch`
+Clean content for articles in batches.
+
+**Query Parameters:**
+- `batch_size` (optional): Number of articles to process per batch (default: 100, min: 10, max: 1000)
 
 ---
 
@@ -373,7 +418,6 @@ Stores RSS feed configuration.
 | name | VARCHAR(255) | Feed name |
 | url | VARCHAR(500) | RSS feed URL |
 | category | VARCHAR(50) | News category |
-| description | TEXT | Feed description |
 | is_active | BOOLEAN | Whether feed is active |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
@@ -394,21 +438,10 @@ Stores processed news articles.
 | source_name | VARCHAR(255) | Source name |
 | source_url | VARCHAR(500) | Source URL |
 | image_url | VARCHAR(1000) | Featured image URL |
+| slug | VARCHAR(100) | Article slug |
 | is_processed | BOOLEAN | Processing status |
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
-
-#### `raw_feed_data`
-Stores raw RSS feed data before processing.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER | Primary key |
-| feed_id | INTEGER | Foreign key to rss_feeds |
-| raw_content | TEXT | Raw XML content |
-| fetch_timestamp | DATETIME | Fetch timestamp |
-| status_code | INTEGER | HTTP status code |
-| error_message | TEXT | Error message if any |
 
 #### `feed_fetch_logs`
 Stores RSS feed fetch operation logs.
@@ -429,26 +462,10 @@ Stores RSS feed fetch operation logs.
 ## Configuration
 
 ### RSS Feeds
-RSS feeds are configured in `config/rss_feeds.py`. You can easily add, update, or remove feeds:
-
-```python
-# Add a new feed
-add_feed(RSSFeed(
-    name="New Source",
-    url="https://newsource.com/feed",
-    category=NewsCategory.TECH,
-    description="New tech news source"
-))
-
-# Remove a feed
-remove_feed("Old Source")
-
-# Update a feed
-update_feed("Source Name", updated_feed)
-```
+RSS feeds are configured in `config/rss_feeds.py`. You can easily add, update, or remove feeds by modifying the `RSS_FEEDS` dictionary.
 
 ### Environment Variables
-- `DATABASE_URL`: PostgreSQL database connection string (required, example: `postgresql://postgres:password@localhost:5432/news_4u`)
+- `DATABASE_URL`: Database connection string (optional, defaults to SQLite)
 
 ---
 

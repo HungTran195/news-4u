@@ -4,6 +4,7 @@ RSS service for fetching and processing RSS feeds.
 
 import feedparser
 import httpx
+import asyncio
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import time
@@ -13,7 +14,7 @@ from newspaper import Article, Config
 import logging
 
 from config.rss_feeds import RSSFeed, get_all_feeds, NewsCategory
-from models.database import RSSFeed as RSSFeedModel, RawFeedData, NewsArticle, FeedFetchLog
+from models.database import RSSFeed as RSSFeedModel, NewsArticle, FeedFetchLog
 from sqlalchemy.orm import Session
 from services.site_extractors import site_extractor_manager
 from lib.utils import generate_unique_slug
@@ -28,9 +29,23 @@ class RSSService:
         self.db = db
         self.timeout = 30  # seconds
         self.batch_size = 100  # Batch size for database operations
+        self._slug_cache = set()  # Cache for existing slugs
+        self._cache_timestamp = None
+        self._cache_ttl = 300  # 5 minutes cache TTL
+        
+        # HTTP client headers to avoid 403 errors
+        self._headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
     
     # ============================================================================
-    # PUBLIC METHODS (Async)
+    # PUBLIC METHODS
     # ============================================================================
     
     async def fetch_feed_async(self, feed: RSSFeed) -> Dict:
@@ -49,45 +64,36 @@ class RSSService:
             self.db.commit()
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                response = await client.get(feed.url)
-                response.raise_for_status()
-                
-                # Store raw data
-                raw_data = RawFeedData(
-                    feed_id=self._get_or_create_feed_id(feed),
-                    raw_content=response.text,
-                    status_code=response.status_code
-                )
-                logger.info(f'---- Get raw data from {feed.name} ----')
-                if self.db is not None:
-                    self.db.add(raw_data)
-                
-                # Parse feed
-                parsed_feed = feedparser.parse(response.text)
-                articles_found = len(parsed_feed.entries)
-                logger.info(f'---- Found {articles_found} articles from {feed.name} ----')
-                
-                # Process articles
-                articles_processed = await self._process_articles_batch(parsed_feed.entries, feed)
-                
-                # Update log
-                execution_time = int((time.time() - start_time) * 1000)
-                object.__setattr__(log_entry, 'status', 'success')  # type: ignore
-                object.__setattr__(log_entry, 'articles_found', articles_found)  # type: ignore
-                object.__setattr__(log_entry, 'articles_processed', articles_processed)  # type: ignore
-                object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
-                
-                if self.db is not None:
-                    self.db.commit()
-                
-                return {
-                    "status": "success",
-                    "articles_found": articles_found,
-                    "articles_processed": articles_processed,
-                    "execution_time": execution_time
-                }
-                
+            # Try with retries for problematic feeds
+            response = await self._fetch_with_retry(feed.url)
+            
+            logger.info(f'---- Fetching feed from {feed.name} ----')
+            
+            # Parse feed
+            parsed_feed = feedparser.parse(response.text)
+            articles_found = len(parsed_feed.entries)
+            logger.info(f'---- Found {articles_found} articles from {feed.name} ----')
+            
+            # Process articles
+            articles_processed = await self._process_articles_batch(parsed_feed.entries, feed)
+            
+            # Update log
+            execution_time = int((time.time() - start_time) * 1000)
+            object.__setattr__(log_entry, 'status', 'success')  # type: ignore
+            object.__setattr__(log_entry, 'articles_found', articles_found)  # type: ignore
+            object.__setattr__(log_entry, 'articles_processed', articles_processed)  # type: ignore
+            object.__setattr__(log_entry, 'execution_time', execution_time)  # type: ignore
+            
+            if self.db is not None:
+                self.db.commit()
+            
+            return {
+                "status": "success",
+                "articles_found": articles_found,
+                "articles_processed": articles_processed,
+                "execution_time": execution_time
+            }
+            
         except Exception as e:
             logger.error(f"Error fetching feed {feed.name}: {e}")
             execution_time = int((time.time() - start_time) * 1000)
@@ -126,20 +132,13 @@ class RSSService:
         Extract full article content from URL using multiple strategies.
         """
         try:
-            import httpx
-            from bs4 import BeautifulSoup
-            from services.site_extractors import site_extractor_manager
-            
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=self._headers) as client:
                 response = await client.get(article_url)
                 response.raise_for_status()
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
-                # Extract main image URL first
                 extracted_image_url = self._extract_main_image_url_from_html(response.text, article_url)
-                
-                # Try custom extractor first
                 extractor = site_extractor_manager.get_extractor(article_url)
                 
                 if extractor:
@@ -147,6 +146,7 @@ class RSSService:
                     content = extractor.extract_content(soup, article_url)
                     if content:
                         return self._clean_extracted_content(content), extracted_image_url
+                
                 # Fallback to Newspaper3k
                 content = await self._extract_with_newspaper3k(article_url)
                 return content, extracted_image_url
@@ -160,7 +160,6 @@ class RSSService:
         """
         if self.db is not None:
             self.db.query(NewsArticle).delete()
-            self.db.query(RawFeedData).delete()
             self.db.query(FeedFetchLog).delete()
             self.db.commit()
 
@@ -170,7 +169,6 @@ class RSSService:
         """
         if self.db is not None:
             self.db.query(NewsArticle).filter(NewsArticle.source_name == feed_name).delete()
-            self.db.query(RawFeedData).filter(RawFeedData.feed_id == feed_name).delete()
             self.db.query(FeedFetchLog).filter(FeedFetchLog.feed_name == feed_name).delete()
             self.db.commit()
     
@@ -184,11 +182,7 @@ class RSSService:
                 NewsArticle.image_url: None
             })
             self.db.commit()
-    
-    # ============================================================================
-    # PUBLIC METHODS (Sync)
-    # ============================================================================
-    
+
     def get_articles_by_category(self, category: NewsCategory, limit: int = 50, offset: int = 0) -> List[NewsArticle]:
         """
         Get articles by category with pagination.
@@ -224,8 +218,40 @@ class RSSService:
         ).limit(limit).all()
     
     # ============================================================================
-    # PRIVATE METHODS (Async)
+    # PRIVATE METHODS
     # ============================================================================
+    
+    async def _fetch_with_retry(self, url: str, max_retries: int = 3) -> httpx.Response:
+        """
+        Fetch URL with retry logic and proper headers to avoid 403 errors.
+        """
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self.timeout, 
+                    follow_redirects=True,
+                    headers=self._headers
+                ) as client:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    return response
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 403 and attempt < max_retries - 1:
+                    logger.warning(f"403 Forbidden on attempt {attempt + 1} for {url}, retrying...")
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                else:
+                    raise e
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Request failed on attempt {attempt + 1} for {url}: {e}, retrying...")
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                else:
+                    raise e
+        
+        raise Exception(f"Failed to fetch {url} and all fallbacks after {max_retries} attempts each")
     
     async def _process_articles_batch(self, entries: List, feed: RSSFeed) -> int:
         """
@@ -241,31 +267,28 @@ class RSSService:
 
         logger.info(f'---- Processing {len(entries)} articles from {feed.name} ----')
         
+        # Get cached existing slugs or refresh cache if needed
+        existing_slugs = self._get_cached_existing_slugs()
+        
         for entry in entries:
-            link = entry.get('link', '').strip()
+            link = self._safe_get_string(entry, 'link')
             if not link:
-                logger.warning(f"Skipping entry from {feed.name} due to missing link: {entry.get('title', 'N/A')}")
+                logger.warning(f"Skipping entry from {feed.name} due to missing link: {self._safe_get_string(entry, 'title', 'N/A')}")
                 continue
 
             try:
-                # Extract article data
-                title = entry.get('title', '').strip()
+                title = self._safe_get_string(entry, 'title')
                 summary = self._extract_summary(entry)
-                author = entry.get('author', '')
+                author = self._safe_get_string(entry, 'author')
                 published_date = self._extract_published_date(entry)
                 image_url = self._extract_image(entry)
                 
                 if published_date is None:
                     logger.warning(f"Failed to parse published date for '{title}' from {feed.name}. Storing with None.")
 
-                # Generate unique slug for the article
-                existing_slugs = set()
-                if self.db is not None:
-                    existing_slugs = {article.slug for article in self.db.query(NewsArticle.slug).filter(NewsArticle.slug.isnot(None)).all()}
-                
                 slug = generate_unique_slug(title, existing_slugs)
+                existing_slugs.add(slug)  # Add to cache to avoid duplicates in this batch
                 
-                # Create article object
                 article = NewsArticle(
                     title=title,
                     summary=summary,
@@ -285,9 +308,7 @@ class RSSService:
                 articles_to_add.append(article)
                 
             except Exception as e:
-                # Log error for individual article and continue with the rest of the batch
-                logger.error(f"Error extracting data for article '{entry.get('title', 'N/A')}' from {feed.name}: {e}")
-                # No rollback here; we want to process other articles in the batch
+                logger.error(f"Error extracting data for article '{self._safe_get_string(entry, 'title', 'N/A')}' from {feed.name}: {e}")
                 continue
         
         # --- Batch Insertion with ON CONFLICT for deduplication ---
@@ -296,33 +317,13 @@ class RSSService:
             return 0
 
         try:
-            # Use SQLAlchemy's bulk_insert_mappings for efficiency, especially with ON CONFLICT
-            # Note: For ON CONFLICT, we often need to construct the raw statement or use specific ORM features.
-            # SQLAlchemy ORM doesn't have a direct `add_all_on_conflict_do_nothing` method.
-            # The most straightforward way with SQLite and ORM is to use `insert` with `on_conflict_do_nothing`.
-            # This requires converting objects back to dicts for `insert().values()`.
-
-            # Prepare data for bulk insertion with ON CONFLICT
-            # This relies on 'link' being a UNIQUE constraint on NewsArticle table
-            
-            # This is a critical part for scaling:
-            # Instead of `session.add_all()` and then hoping for `flush` to handle conflicts
-            # (which often requires specific drivers/db features, and can still lead to rollbacks),
-            # we explicitly use an `INSERT ... ON CONFLICT DO NOTHING` statement.
-
-            # IMPORTANT: For `session.execute(insert_stmt)`, SQLAlchemy 1.4+ (and 2.0) is needed
-            # For `async` operations, this needs to be awaited.
-            
             from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-            # Convert ORM objects to dictionaries for bulk insertion
-            # Exclude fields like 'id' if it's auto-incrementing
             article_dicts = []
             for article_obj in articles_to_add:
-                # Create a dictionary from the ORM object, excluding any auto-generated PK if applicable
                 article_dict = {
                     col.name: getattr(article_obj, col.name)
-                    for col in NewsArticle.__table__.columns if col.name != 'id'  # Exclude 'id' if it's auto-pk
+                    for col in NewsArticle.__table__.columns if col.name != 'id'
                 }
                 article_dicts.append(article_dict)
 
@@ -330,28 +331,15 @@ class RSSService:
                 logger.info(f"No valid articles for batch insertion from {feed.name}.")
                 return 0
 
-            # Construct the ON CONFLICT statement using SQLite-specific insert
             insert_stmt = sqlite_insert(NewsArticle).values(article_dicts)
             on_conflict_stmt = insert_stmt.on_conflict_do_nothing(index_elements=['link'])
             
-            # Execute the statement. This must be `await`ed if self.db uses an async driver.
-            # For a synchronous SQLite connection, this would just be `self.db.execute(...)`
-            # and the `async def` would be more of a conceptual wrapper.
             if self.db is not None:
-                self.db.execute(on_conflict_stmt)  # Or self.db.execute(on_conflict_stmt) if synchronous
+                self.db.execute(on_conflict_stmt)
 
-            # Flush/commit the changes. For bulk inserts with on_conflict_do_nothing,
-            # this usually means just committing the transaction.
             if self.db is not None:
-                self.db.commit()  # Or self.db.commit() if synchronous
+                self.db.commit()
 
-            # Determine processed count. SQLite's ON CONFLICT DO NOTHING does not return
-            # the number of inserted rows directly. We can't use `rowcount` easily here
-            # for *just* the new inserts without a subsequent query or tracking.
-            # For simplicity, we'll assume all were attempted, but actual inserted count
-            # would require a specific mechanism (e.g., fetching after the fact, or
-            # more complex statement with RETURNING if not SQLite).
-            # For now, let's just count how many we *attempted* to add.
             processed_successfully_count = len(articles_to_add)
 
             logger.info(f"Successfully attempted to add {processed_successfully_count} articles from {feed.name}.")
@@ -359,87 +347,62 @@ class RSSService:
         except Exception as e:
             logger.error(f"Critical error during batch database insertion for {feed.name}: {e}")
             if self.db is not None:
-                self.db.rollback()  # Rollback only on a batch-level failure
-            return 0  # Indicate that this batch failed to insert
+                self.db.rollback()
+            return 0
 
         return processed_successfully_count
     
     async def _extract_with_newspaper3k(self, article_url: str) -> Optional[str]:
-        """
-        Extract content using Newspaper3k as fallback.
-        """
         try:
-            # Configure Newspaper3k
+
             config = Config()
             config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             config.request_timeout = 15
-            config.fetch_images = True
             config.memoize_articles = False
             
-            # Create article object
             article = Article(article_url, config=config)
-            
-            # Download and parse
             article.download()
             article.parse()
             
-            if hasattr(article, 'html') and article.html:
-                soup = BeautifulSoup(article.html, 'html.parser')
-                
-                # Find the main content area
-                content_area = self._find_main_content_area(soup)
-                
-                if content_area:
-                    # Extract text with embedded images
-                    content_with_images = self._extract_text_with_images(content_area, article_url)
-                    if content_with_images:
-                        return self._clean_extracted_content(content_with_images)
-            
-            # Fallback to plain text if HTML extraction fails
             if hasattr(article, 'text') and article.text:
-                return self._clean_extracted_content(article.text)
-
+                cleaned_text = self._clean_extracted_content(article.text)
+                if cleaned_text and len(cleaned_text.strip()) > 100:
+                    return cleaned_text
+            
         except Exception as e:
             logger.error(f"Error extracting content with Newspaper3k from {article_url}: {e}")
         
         return None
-    
-    # ============================================================================
-    # PRIVATE METHODS (Sync)
-    # ============================================================================
-    
-    def _get_or_create_feed_id(self, feed: RSSFeed) -> int:
-        """
-        Get or create RSS feed ID in database.
-        """
-        if self.db is None:
-            return 0
-        db_feed = self.db.query(RSSFeedModel).filter(
-            RSSFeedModel.name == feed.name
-        ).first()
         
-        if not db_feed:
-            db_feed = RSSFeedModel(
-                name=feed.name,
-                url=feed.url,
-                category=feed.category.value
-            )
+    def _get_cached_existing_slugs(self) -> set:
+        """
+        Get cached existing slugs or refresh cache if needed.
+        """
+        current_time = time.time()
+        
+        # Check if cache is valid
+        if (self._cache_timestamp is None or 
+            current_time - self._cache_timestamp > self._cache_ttl or
+            not self._slug_cache):
+            
+            # Refresh cache
             if self.db is not None:
-                self.db.add(db_feed)
-                self.db.commit()
-                self.db.refresh(db_feed)
+                existing_slugs = {article.slug for article in self.db.query(NewsArticle.slug).filter(NewsArticle.slug.isnot(None)).all()}
+                self._slug_cache = existing_slugs
+                self._cache_timestamp = current_time
+                logger.debug(f"Refreshed slug cache with {len(existing_slugs)} existing slugs")
+            else:
+                self._slug_cache = set()
+                self._cache_timestamp = current_time
         
-        db_feed_id = getattr(db_feed, 'id', None)
-        if db_feed_id is None:
-            raise ValueError('db_feed.id is None')
-        return int(db_feed_id)
+        return self._slug_cache.copy()
     
     def _extract_summary(self, entry) -> Optional[str]:
         """
         Extract summary from RSS entry.
         """
         # Try different summary fields
-        summary = entry.get('summary', '') or entry.get('description', '')
+        summary = self._safe_get_string(entry, 'summary') or self._safe_get_string(entry, 'description')
         
         if summary:
             # Clean HTML tags
@@ -463,243 +426,125 @@ class RSSService:
         ]
         
         for field in date_fields:
-            date_str = entry.get(field)
+            date_str = entry.get(field, '')
             if date_str:
                 # Normalize timezone format: GMT+7 -> +07, GMT-5 -> -05
                 date_str = re.sub(r'GMT\+(\d{1,2})', r'+\1', date_str)
                 date_str = re.sub(r'GMT-(\d{1,2})', r'-\1', date_str)
                 
                 try:
-                    dt = dateutil_parser.parse(date_str)
-                    if dt.tzinfo is not None:
-                        return dt.astimezone(timezone.utc)
+                    parsed_date = dateutil_parser.parse(date_str)
+                    
+                    # Ensure it has timezone info, default to UTC if not
+                    if parsed_date.tzinfo is None:
+                        parsed_date = parsed_date.replace(tzinfo=timezone.utc)
                     else:
-                        return dt.replace(tzinfo=timezone.utc)
-                except Exception:
-                    logger.warning(f"---- Error parsing date {date_str} ----")
-                    pass
+                        # Convert to UTC
+                        parsed_date = parsed_date.astimezone(timezone.utc)
+                    
+                    return parsed_date
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse date from field '{field}': {date_str}, error: {e}")
+                    continue
+        
+        # If no date found, return None
         return None
     
     def _extract_image(self, entry) -> Optional[str]:
         """
-        Extract image URL from RSS entry, including <image> tags, <img> tags, or <a> tags containing an <img> tag.
+        Extract image URL from RSS entry.
         """
-        from bs4.element import Tag
-        image_url = None
-
-        # Check media:content
-        if 'media_content' in entry and entry['media_content']:
-            image_url = entry['media_content'][0].get('url')
-        elif 'media_thumbnail' in entry and entry['media_thumbnail']:
-            image_url = entry['media_thumbnail'][0].get('url')
-        elif 'enclosures' in entry and entry['enclosures']:
-            for enclosure in entry['enclosures']:
-                if enclosure.get('type', '').startswith('image/'):
-                    image_url = enclosure.get('href')
-                    break
-
-        # If not found, try to extract from HTML content (summary/description/content)
-        if not image_url:
-            html_fields = []
-            content_field = entry.get('content')
-            if isinstance(content_field, list):
-                for item in content_field:
-                    if isinstance(item, dict):
-                        html_fields.append(item.get('value', ''))
-                    elif isinstance(item, str):
-                        html_fields.append(item)
-            elif isinstance(content_field, dict):
-                html_fields.append(content_field.get('value', ''))
-            elif isinstance(content_field, str):
-                html_fields.append(content_field)
-            for key in ['summary', 'description']:
-                val = entry.get(key)
-                if isinstance(val, str):
-                    html_fields.append(val)
-            for html in html_fields:
-                if not html:
-                    continue
-                soup = BeautifulSoup(html, 'xml')
-                # Try <image> tag
-                image_tag = soup.find('image')
-                if isinstance(image_tag, Tag):
-                    # Prefer src attribute, but fallback to text content
-                    if image_tag.has_attr('src'):
-                        image_url = image_tag['src']
-                        break
-                    elif image_tag.string and image_tag.string.strip().startswith('http'):
-                        image_url = image_tag.string.strip()
-                        break
-                # Try <img> tag
+        image_fields = ['media_content', 'media:thumbnail', 'enclosure', 'image']
+        
+        for field in image_fields:
+            if field in entry:
+                media_content = entry[field]
+                
+                # Handle different media content formats
+                if isinstance(media_content, list) and len(media_content) > 0:
+                    # Take the first media item
+                    media_item = media_content[0]
+                    if isinstance(media_item, dict):
+                        url = media_item.get('url') or media_item.get('href')
+                        if url:
+                            return url
+                elif isinstance(media_content, dict):
+                    # Single media item
+                    url = media_content.get('url') or media_content.get('href')
+                    if url:
+                        return url
+                elif isinstance(media_content, str):
+                    # Direct URL string
+                    return media_content
+        
+        # Try to extract from content/summary if no media found
+        content_fields = ['summary', 'description', 'content']
+        for field in content_fields:
+            content = self._safe_get_string(entry, field)
+            if content:
+                # Look for img tags
+                soup = BeautifulSoup(content, 'html.parser')
                 img_tag = soup.find('img')
-                if isinstance(img_tag, Tag) and img_tag.has_attr('src'):
-                    image_url = img_tag['src']
-                    break
-                # Try <a> tag containing <img>
-                a_tag = soup.find('a')
-                if isinstance(a_tag, Tag):
-                    img_in_a = a_tag.find('img')
-                    if isinstance(img_in_a, Tag) and img_in_a.has_attr('src'):
-                        image_url = img_in_a['src']
-                        break
-        # Ensure return type is str or None
-        if isinstance(image_url, list):
-            return image_url[0] if image_url else None
-        if isinstance(image_url, str):
-            return image_url
+                if img_tag and img_tag.get('src'):
+                    return img_tag.get('src')
+        
         return None
     
-    def _find_main_content_area(self, soup: BeautifulSoup):
-        """
-        Find the main content area in the HTML.
-        """
-        # Remove unwanted elements
-        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
-            element.decompose()
-        
-        # Try to find main content areas
-        content_selectors = [
-            'article',
-            '[class*="content"]',
-            '[class*="article"]',
-            '[class*="post"]',
-            '[class*="entry"]',
-            'main',
-            '.entry-content',
-            '.post-content',
-            '.article-content',
-            '.story-content',
-            '.content-body'
-        ]
-        
-        for selector in content_selectors:
-            content = soup.select_one(selector)
-            if content and len(content.get_text(strip=True)) > 500:
-                return content
-        
-        # If no specific content area found, return body
-        return soup.find('body')
-
-    def _extract_text_with_images(self, content_area, base_url: str) -> str:
-        """
-        Extract text content with embedded image references.
-        """
-        if not content_area:
-            return ""
-        
-        # Process the content area to extract text and images
-        content_parts = []
-        
-        # Process each element in the content area
-        for element in content_area.find_all(['p', 'div', 'img', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-            if element.name == 'img':
-                # Handle image element
-                img_src = element.get('src') or element.get('data-src') or element.get('data-lazy-src')
-                if img_src:
-                    # Convert to absolute URL
-                    img_src = self._make_absolute_url(img_src, base_url)
-                    if self._is_valid_content_image(img_src):
-                        # Add image reference to content
-                        alt_text = element.get('alt', '')
-                        content_parts.append(f"\n[IMAGE: {img_src}]\n")
-                        if alt_text:
-                            content_parts.append(f"[Image description: {alt_text}]\n")
-            elif element.name == 'figure':
-                # Handle figure element (often contains images with captions)
-                img = element.find('img')
-                if img:
-                    img_src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
-                    if img_src:
-                        img_src = self._make_absolute_url(img_src, base_url)
-                        if self._is_valid_content_image(img_src):
-                            content_parts.append(f"\n[IMAGE: {img_src}]\n")
-                            # Add caption if available
-                            figcaption = element.find('figcaption')
-                            if figcaption:
-                                caption_text = figcaption.get_text(strip=True)
-                                if caption_text:
-                                    content_parts.append(f"[Image caption: {caption_text}]\n")
-            else:
-                # Handle text elements
-                text = element.get_text(strip=True)
-                if text:
-                    content_parts.append(text + "\n")
-        
-        return " ".join(content_parts)
-
     def _make_absolute_url(self, url: str, base_url: str) -> str:
         """
         Convert relative URL to absolute URL.
         """
-        if not url:
-            return ""
-        
-        if url.startswith('//'):
-            return 'https:' + url
-        elif url.startswith('/'):
-            from urllib.parse import urljoin
-            return urljoin(base_url, url)
-        elif not url.startswith(('http://', 'https://')):
-            from urllib.parse import urljoin
-            return urljoin(base_url, url)
-        
-        return url
-
+        from urllib.parse import urljoin
+        return urljoin(base_url, url)
+    
     def _is_valid_content_image(self, image_url: str) -> bool:
         """
-        Check if an image URL is valid for content embedding.
+        Check if image URL is valid for content.
         """
-        if not image_url or len(image_url) < 10:
+        if not image_url:
             return False
         
-        # Skip data URIs
+        # Skip data URLs
         if image_url.startswith('data:'):
             return False
         
-        # Skip common unwanted patterns
-        unwanted_patterns = [
-            'avatar', 'icon', 'logo', 'banner', 'ad', 'advertisement',
-            'social', 'share', 'facebook', 'twitter', 'instagram',
-            'pixel', 'tracking', 'analytics', '1x1', 'blank',
-            'spacer', 'clear', 'transparent'
-        ]
+        # Skip very small images (likely icons)
+        if any(size in image_url.lower() for size in ['16x16', '32x32', '48x48']):
+            return False
         
-        image_url_lower = image_url.lower()
-        for pattern in unwanted_patterns:
-            if pattern in image_url_lower:
-                return False
+        # Skip tracking pixels
+        if any(tracker in image_url.lower() for tracker in ['tracking', 'pixel', 'beacon']):
+            return False
         
         return True
-
+    
     def _clean_extracted_content(self, text: str) -> str:
         """
         Clean and format extracted content.
         """
-        # Check if content contains HTML tags
-        if '<' in text and '>' in text:
-            # Apply HTML sanitization first
-            text = self._sanitize_html_attributes(text)
+        if not text:
+            return ""
         
         # Remove excessive whitespace
-        text = re.sub(r'\n\s*\n', '\n\n', text)
-        text = re.sub(r' +', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
         
-        # Remove common unwanted patterns
-        text = re.sub(r'Share this article.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Follow us.*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'Subscribe.*', '', text, flags=re.IGNORECASE)
+        # Remove HTML comments
+        text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
         
-        # Limit content length to avoid database issues
-        # SQLite TEXT can handle up to 1GB, so we can be more generous
-        if len(text) > 200_000:
-            text = text[:200_000] + "..."
+        # Clean up line breaks
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
         
-        return text.strip()
+        # Remove multiple consecutive line breaks
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Strip leading/trailing whitespace
+        text = text.strip()
+        
+        return text
     
     def _sanitize_html_attributes(self, html_content: str) -> str:
         """
-        Remove all class names, IDs, and data attributes from HTML tags while preserving content structure.
-        This creates clean, minimal HTML that's easier to style and maintain.
+        Remove unwanted HTML attributes while preserving content structure.
         """
         if not html_content:
             return ""
@@ -709,7 +554,7 @@ class RSSService:
         
         # Define attributes to remove
         attributes_to_remove = [
-            'class', 'id', 'style', 'onclick', 'onload', 'onerror',
+            'class', 'id', 'style', 'data-*', 'onclick', 'onload', 'onerror',
             'onmouseover', 'onmouseout', 'onfocus', 'onblur', 'onchange',
             'oninput', 'onsubmit', 'onreset', 'onselect', 'onunload',
             'onkeydown', 'onkeyup', 'onkeypress', 'onmousedown', 'onmouseup',
@@ -717,7 +562,7 @@ class RSSService:
             'onabort', 'onbeforeunload', 'onerror', 'onhashchange', 'onmessage',
             'onoffline', 'ononline', 'onpagehide', 'onpageshow', 'onpopstate',
             'onresize', 'onstorage', 'onbeforeprint', 'onafterprint',
-            'role', 'tabindex', 'accesskey', 'contenteditable',
+            'aria-*', 'role', 'tabindex', 'accesskey', 'contenteditable',
             'draggable', 'dropzone', 'spellcheck', 'translate'
         ]
         
@@ -763,116 +608,118 @@ class RSSService:
     
     async def clean_content_batch(self, batch_size: int = 100) -> Dict[str, Any]:
         """
-        Clean HTML content for all articles in the database in batches.
-        This removes class names, IDs, and data attributes from existing content.
+        Clean HTML content for articles in batches.
         """
         if self.db is None:
-            return {"status": "error", "message": "Database not available"}
+            return {"status": "error", "message": "No database connection"}
         
         try:
-            # Get total count of articles with content
-            total_articles = self.db.query(NewsArticle).filter(
-                NewsArticle.content.isnot(None)
-            ).count()
+            # Get articles without content or with raw content
+            articles_without_content = self.db.query(NewsArticle).filter(
+                (NewsArticle.content.is_(None)) | 
+                (NewsArticle.content == '') |
+                (NewsArticle.content.like('%<div class=%')) |
+                (NewsArticle.content.like('%<div id=%'))
+            ).limit(batch_size).all()
             
-            if total_articles == 0:
+            if not articles_without_content:
                 return {
                     "status": "success",
-                    "message": "No articles with content found",
-                    "total_articles": 0,
-                    "processed_articles": 0,
-                    "updated_articles": 0
+                    "message": "No articles found that need content cleaning",
+                    "articles_processed": 0
                 }
             
             processed_count = 0
-            updated_count = 0
+            for article in articles_without_content:
+                try:
+                    if article.content:
+                        # Clean existing content
+                        cleaned_content = self._sanitize_html_attributes(article.content)
+                        if cleaned_content != article.content:
+                            article.content = cleaned_content
+                            article.updated_at = datetime.now()
+                            processed_count += 1
+                    else:
+                        # Try to extract content if missing
+                        if article.link:
+                            content, _ = await self.extract_article_content(article.link)
+                            if content:
+                                article.content = content
+                                article.updated_at = datetime.now()
+                                processed_count += 1
+                
+                except Exception as e:
+                    logger.error(f"Error cleaning content for article {article.id}: {e}")
+                    continue
             
-            # Process in batches
-            offset = 0
-            while offset < total_articles:
-                # Get batch of articles
-                articles = self.db.query(NewsArticle).filter(
-                    NewsArticle.content.isnot(None)
-                ).offset(offset).limit(batch_size).all()
-                
-                for article in articles:
-                    processed_count += 1
-                    
-                    if getattr(article, 'content', None):
-                        # Clean the content
-                        cleaned_content = self._clean_extracted_content(getattr(article, 'content'))
-                        
-                        # Update if content changed
-                        if cleaned_content != getattr(article, 'content'):
-                            setattr(article, 'content', cleaned_content)
-                            setattr(article, 'updated_at', datetime.now())
-                            updated_count += 1
-                
-                # Commit batch
-                self.db.commit()
-                offset += batch_size
-                
-                logger.info(f"Processed {processed_count}/{total_articles} articles, updated {updated_count}")
+            self.db.commit()
             
             return {
                 "status": "success",
-                "message": f"Successfully cleaned content for {total_articles} articles",
-                "total_articles": total_articles,
-                "processed_articles": processed_count,
-                "updated_articles": updated_count
+                "message": f"Successfully processed {processed_count} articles",
+                "articles_processed": processed_count,
+                "total_articles_in_batch": len(articles_without_content)
             }
             
         except Exception as e:
-            logger.error(f"Error during batch content cleaning: {e}")
+            logger.error(f"Error in batch content cleaning: {e}")
             if self.db is not None:
                 self.db.rollback()
             return {
                 "status": "error",
-                "message": f"Error during batch content cleaning: {str(e)}",
-                "total_articles": 0,
-                "processed_articles": 0,
-                "updated_articles": 0
+                "message": f"Error during batch processing: {str(e)}",
+                "articles_processed": 0
             }
-
+    
     def _extract_main_image_url_from_html(self, html: str, base_url: str) -> Optional[str]:
         """
-        Extract the main image URL from HTML using meta tags and first <img> in main content area.
+        Extract the main image URL from HTML content.
         """
-        from bs4 import BeautifulSoup
-        from bs4.element import Tag
-        soup = BeautifulSoup(html, 'html.parser')
-        # 1. Try og:image
-        og_image = soup.find('meta', property='og:image')
-        if isinstance(og_image, Tag):
-            val = og_image.get('content')
-            if isinstance(val, list):
-                val = val[0] if val else None
-            if isinstance(val, str):
-                return self._make_absolute_url(val, base_url)
-        # 2. Try twitter:image
-        twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
-        if isinstance(twitter_image, Tag):
-            val = twitter_image.get('content')
-            if isinstance(val, list):
-                val = val[0] if val else None
-            if isinstance(val, str):
-                return self._make_absolute_url(val, base_url)
-        # 3. Try first <img> in main content area
-        main_content = soup.find('article') or soup.find('main') or soup.find('body')
-        if isinstance(main_content, Tag):
-            img_tag = main_content.find('img')
-            if isinstance(img_tag, Tag):
-                val = img_tag.get('src')
-                if isinstance(val, list):
-                    val = val[0] if val else None
-                if isinstance(val, str):
-                    return self._make_absolute_url(val, base_url)
-        # 4. Fallback: any <img> in the page
-        img_tag = soup.find('img')
-        if isinstance(img_tag, Tag):
-            val = img_tag.get('src')
-            if isinstance(val, list):
-                val = val[0] if val else None
-            if isinstance(val, str):
-                return self._make_absolute_url(val, base_url)
-        return None
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Look for Open Graph image
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                return self._make_absolute_url(og_image.get('content'), base_url)
+            
+            # Look for Twitter image
+            twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
+            if twitter_image and twitter_image.get('content'):
+                return self._make_absolute_url(twitter_image.get('content'), base_url)
+            
+            # Look for the first large image in the content
+            images = soup.find_all('img')
+            for img in images:
+                src = img.get('src', '')
+                if src and self._is_valid_content_image(src):
+                    # Check if it's a large image (likely main content image)
+                    width = img.get('width', '0')
+                    height = img.get('height', '0')
+                    
+                    try:
+                        width_int = int(width) if width.isdigit() else 0
+                        height_int = int(height) if height.isdigit() else 0
+                        
+                        # Consider it a main image if it's reasonably large
+                        if width_int > 300 or height_int > 200:
+                            return self._make_absolute_url(src, base_url)
+                    except (ValueError, AttributeError):
+                        # If we can't parse dimensions, check if it's a reasonable URL
+                        if len(src) > 20:  # Likely a real image URL
+                            return self._make_absolute_url(src, base_url)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting main image from HTML: {e}")
+            return None
+
+    def _safe_get_string(self, entry, key: str, default: str = "") -> str:
+        """
+        Safely extract a string value from an entry, handling potential list/dict issues.
+        """
+        value = entry.get(key)
+        if isinstance(value, (list, tuple)):
+            return default if not value else str(value[0])
+        return str(value) if value is not None else default

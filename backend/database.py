@@ -7,6 +7,9 @@ from sqlalchemy.orm import sessionmaker, Session
 from typing import Generator
 import os
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Database URL - Support persistent disk and local development
 def get_database_url() -> str:
@@ -27,7 +30,7 @@ def get_database_url() -> str:
 
 # Get database URL
 DATABASE_URL = get_database_url()
-print(f"[INFO] Using database: {DATABASE_URL}")
+logger.info(f"Using database: {DATABASE_URL}")
 
 # Create engine
 engine = create_engine(

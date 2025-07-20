@@ -99,11 +99,6 @@ def get_all_feeds() -> List[RSSFeed]:
     return all_feeds
 
 
-def get_feeds_by_category(category: NewsCategory) -> List[RSSFeed]:
-    """Get RSS feeds for a specific category."""
-    return RSS_FEEDS.get(category, [])
-
-
 def get_feed_by_name(name: str) -> RSSFeed | None:
     """Get a specific RSS feed by name."""
     for feed in get_all_feeds():
@@ -112,26 +107,31 @@ def get_feed_by_name(name: str) -> RSSFeed | None:
     return None
 
 
-def add_feed(feed: RSSFeed) -> None:
-    """Add a new RSS feed to the configuration."""
-    if feed.category not in RSS_FEEDS:
-        RSS_FEEDS[feed.category] = []
-    RSS_FEEDS[feed.category].append(feed)
+# TODO: The following functions are defined for future use but not currently used in the codebase
+# They can be uncommented and implemented when needed for dynamic feed management
 
+# def get_feeds_by_category(category: NewsCategory) -> List[RSSFeed]:
+#     """Get RSS feeds for a specific category."""
+#     return RSS_FEEDS.get(category, [])
 
-def remove_feed(name: str) -> bool:
-    """Remove an RSS feed by name."""
-    for category in RSS_FEEDS:
-        RSS_FEEDS[category] = [
-            feed for feed in RSS_FEEDS[category] 
-            if feed.name.lower() != name.lower()
-        ]
-    return True
+# def add_feed(feed: RSSFeed) -> None:
+#     """Add a new RSS feed to the configuration."""
+#     if feed.category not in RSS_FEEDS:
+#         RSS_FEEDS[feed.category] = []
+#     RSS_FEEDS[feed.category].append(feed)
 
+# def remove_feed(name: str) -> bool:
+#     """Remove an RSS feed by name."""
+#     for category in RSS_FEEDS:
+#         RSS_FEEDS[category] = [
+#             feed for feed in RSS_FEEDS[category] 
+#             if feed.name.lower() != name.lower()
+#         ]
+#     return True
 
-def update_feed(name: str, updated_feed: RSSFeed) -> bool:
-    """Update an existing RSS feed."""
-    if remove_feed(name):
-        add_feed(updated_feed)
-        return True
-    return False
+# def update_feed(name: str, updated_feed: RSSFeed) -> bool:
+#     """Update an existing RSS feed."""
+#     if remove_feed(name):
+#         add_feed(updated_feed)
+#         return True
+#     return False
