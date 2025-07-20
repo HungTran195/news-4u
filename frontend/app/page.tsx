@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { newsApi, NewsArticle, Stats } from '@/lib/api';
+import { newsApi, NewsArticle } from '@/lib/api';
 import { Newspaper, Search, Globe, Laptop, Flag } from 'lucide-react';
 import ArticleDetail from '@/components/ArticleDetail';
 import SearchBar from '@/components/SearchBar';
@@ -10,18 +10,20 @@ import Pagination from '@/components/Pagination';
 import FeedManager from '../components/FeedManager';
 import ArticleCard from '@/components/ArticleCard';
 import DarkModeToggle from '@/components/DarkModeToggle';
+import { ARTICLES_PER_PAGE, UI_CATEGORY_MAP } from '@/lib/constants';
 
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // State management with persistence
+  // State management
   const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<{
+    articles: boolean;
+    articleId: number | null;
+  }>({ articles: false, articleId: null });
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
-  const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'news' | 'search'>('news');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,13 +32,8 @@ function HomePageContent() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<NewsArticle[]>([]);
   const [searchTotal, setSearchTotal] = useState(0);
-
-  // New state for feed selection and lazy loading
   const [selectedFeeds, setSelectedFeeds] = useState<string[]>([]);
   const [totalArticles, setTotalArticles] = useState(0);
-  const [loadingArticles, setLoadingArticles] = useState(false);
-  const [loadingArticleId, setLoadingArticleId] = useState<number | null>(null);
-  const [hasLoadedArticles, setHasLoadedArticles] = useState(false);
 
   // State persistence functions
   const saveStateToStorage = () => {
@@ -111,29 +108,20 @@ function HomePageContent() {
   };
 
   useEffect(() => {
-    // loadStats();
-    // Load state from URL first, then from localStorage as fallback
     const urlState = loadStateFromURL();
     if (!urlState.category && !urlState.page && !urlState.feeds.length && !urlState.query) {
-      // No URL params, try localStorage
       const storageState = loadStateFromStorage();
       if (storageState) {
-        // Load articles based on restored state
         if (storageState.activeTab === 'search' && storageState.searchQuery) {
-          // Restore search results
-          setSearchResults(storageState.searchResults || []);
           setSearchTotal(storageState.searchTotal || 0);
         } else {
           loadArticles(storageState.selectedCategory, storageState.currentPage, storageState.selectedFeeds);
         }
       } else {
-        // Default load
         loadArticles('all', 1, []);
       }
     } else {
-      // Load articles based on URL state
       if (urlState.tab === 'search' && urlState.query) {
-        // Trigger search based on URL params
         handleSearch(urlState.query, urlState.searchCat, urlState.timeFilter);
       } else {
         loadArticles(urlState.category, urlState.page, urlState.feeds);
@@ -142,51 +130,24 @@ function HomePageContent() {
   }, []);
 
   useEffect(() => {
-    if (hasLoadedArticles) {
-      loadArticles(selectedCategory, currentPage, selectedFeeds);
-    }
-  }, [currentPage, selectedCategory, selectedFeeds, hasLoadedArticles]);
+    loadArticles(selectedCategory, currentPage, selectedFeeds);
+  }, [currentPage, selectedCategory, selectedFeeds]);
 
-  // Save state to storage and update URL when relevant state changes
   useEffect(() => {
-    if (hasLoadedArticles) {
-      saveStateToStorage();
-      updateURLWithState();
-    }
+    saveStateToStorage();
+    updateURLWithState();
   }, [selectedCategory, currentPage, selectedFeeds, activeTab, searchQuery, searchCategory, searchTimeFilter]);
 
-  // Temporary disable this 
-  // const loadStats = async () => {
-  //   try {
-  //     setLoading(true);
-  //     const statsData = await newsApi.getStats();
-  //     setStats(statsData);
-  //   } catch (error) {
-  //     // Error handling
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-  // Update loadArticles to accept category and page
   const loadArticles = async (category = 'all', page = 1, feeds: string[]) => {
     try {
-      setLoadingArticles(true);
+      setLoading(prev => ({ ...prev, articles: true }));
       const params: any = {
         page,
-        per_page: 12,
+        per_page: ARTICLES_PER_PAGE,
         feeds: feeds,
       };
       if (category !== 'all') {
-        // Map UI category to backend value
-        const categoryMap: Record<string, string> = {
-          all: '',
-          vn: 'Vietnamese News',
-          global: 'Global News',
-          us: 'US News',
-          tech: 'Tech',
-        };
-        params.category = categoryMap[category] || category;
+        params.category = UI_CATEGORY_MAP[category] || category;
       }
       const articlesData = await newsApi.getArticles(params);
       setArticles(articlesData.articles);
@@ -195,31 +156,25 @@ function HomePageContent() {
     } catch (error) {
       // Error handling
     } finally {
-      setLoadingArticles(false);
+      setLoading(prev => ({ ...prev, articles: false }));
     }
   };
 
-
   const handleArticleClick = async (article: NewsArticle) => {
     if (article.slug) {
-      // Save current state before navigating
       saveStateToStorage();
       updateURLWithState();
-      // Navigate to the article detail page
       router.push(`/article/${article.slug}`);
     } else {
-      // Fallback to modal for articles without slugs
-      setLoadingArticleId(article.id);
+      setLoading(prev => ({ ...prev, articleId: article.id }));
       try {
-        // Always extract content/details on click
         const updatedArticle = await newsApi.extractArticleContent(article.id);
         setArticles(prev => prev.map(a => a.id === article.id ? updatedArticle : a));
         setSelectedArticle(updatedArticle);
       } catch (error) {
-        // Still show the article even if content loading fails
         setSelectedArticle(article);
       } finally {
-        setLoadingArticleId(null);
+        setLoading(prev => ({ ...prev, articleId: null }));
       }
     }
   };
@@ -227,7 +182,6 @@ function HomePageContent() {
   const handleExtractContent = async (articleId: number) => {
     try {
       await newsApi.extractArticleContent(articleId);
-      // Reload the specific article to get updated content
       const updatedArticle = articles.find(a => a.id === articleId);
       if (updatedArticle) {
         const response = await newsApi.getArticles({ per_page: 1, article_id: articleId });
@@ -242,7 +196,6 @@ function HomePageContent() {
     }
   };
 
-
   const handleSearch = async (query: string, category: string, timeFilter: string) => {
     try {
       setIsSearching(true);
@@ -256,7 +209,7 @@ function HomePageContent() {
         category,
         time_filter: timeFilter,
         page: 1,
-        per_page: 12
+        per_page: ARTICLES_PER_PAGE
       });
 
       setSearchResults(result.articles);
@@ -280,7 +233,7 @@ function HomePageContent() {
         category: searchCategory,
         time_filter: searchTimeFilter,
         page,
-        per_page: 12
+        per_page: ARTICLES_PER_PAGE
       });
 
       setSearchResults(result.articles);
@@ -289,7 +242,6 @@ function HomePageContent() {
       saveStateToStorage();
       updateURLWithState();
 
-      // Scroll to top on mobile after page change
       if (typeof window !== 'undefined' && window.innerWidth < 640) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -310,21 +262,19 @@ function HomePageContent() {
     updateURLWithState();
   };
 
-
   const handleFeedSelectionApply = async (feeds: string[]) => {
     setSelectedFeeds(feeds);
     setCurrentPage(1);
-    setSelectedCategory('all'); // Reset category filter when feeds are selected
-    // Reset search query and results when feeds are selected
+    setSelectedCategory('all');
     setSearchQuery('');
     setSearchResults([]);
     setSearchTotal(0);
-    setActiveTab('news'); // Switch back to news tab
+    setActiveTab('news');
     try {
-      setLoadingArticles(true);
+      setLoading(prev => ({ ...prev, articles: true }));
       const params: any = {
         page: 1,
-        per_page: 12,
+        per_page: ARTICLES_PER_PAGE,
         feeds: feeds,
       };
 
@@ -337,28 +287,13 @@ function HomePageContent() {
     } catch (error) {
       // Error handling
     } finally {
-      setLoadingArticles(false);
+      setLoading(prev => ({ ...prev, articles: false }));
     }
   };
 
-  const handleGoHome = () => {
-    setSelectedArticle(null);
-    setActiveTab('news');
-    setSearchQuery('');
-    setSearchResults([]);
-    setSearchTotal(0);
-    setSelectedCategory('all');
-    setCurrentPage(1);
-    setSelectedFeeds([]);
-    saveStateToStorage();
-    updateURLWithState();
-  };
+  const totalPages = Math.ceil(totalArticles / ARTICLES_PER_PAGE);
 
-  // Pagination logic
-  const itemsPerPage = 12;
-  const totalPages = Math.ceil(totalArticles / itemsPerPage);
-
-  if (loading) {
+  if (loading.articles) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -369,7 +304,6 @@ function HomePageContent() {
     );
   }
 
-  // Tab bar for categories and search
   const categories = [
     { key: 'all', label: 'All News', icon: <Newspaper className="h-4 w-4 mr-1" />, color: 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200' },
     { key: 'vn', label: 'VN', icon: <Flag className="h-4 w-4 mr-1 text-green-600 dark:text-green-300" />, color: 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' },
@@ -411,7 +345,6 @@ function HomePageContent() {
                 setSelectedFeeds([]);
                 setSelectedCategory(cat.key);
                 setCurrentPage(1);
-                // Reset search query and results when category is selected
                 setSearchQuery('');
                 setSearchResults([]);
                 setSearchTotal(0);
@@ -450,7 +383,6 @@ function HomePageContent() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-0 sm:px-4 lg:px-6 py-6">
         {activeTab === 'search' ? (
           <>
@@ -479,18 +411,18 @@ function HomePageContent() {
                       key={article.id}
                       article={article}
                       onArticleClick={handleArticleClick}
-                      isLoading={loadingArticleId === article.id}
+                      isLoading={loading.articleId === article.id}
                     />
                   ))}
                 </div>
 
                 {/* Search Results Pagination */}
-                {searchTotal > 12 && (
+                {searchTotal > ARTICLES_PER_PAGE && (
                   <Pagination
                     currentPage={currentPage}
-                    totalPages={Math.ceil(searchTotal / 12)}
+                    totalPages={Math.ceil(searchTotal / ARTICLES_PER_PAGE)}
                     totalItems={searchTotal}
-                    itemsPerPage={12}
+                    itemsPerPage={ARTICLES_PER_PAGE}
                     onPageChange={handleSearchPageChange}
                   />
                 )}
@@ -507,9 +439,7 @@ function HomePageContent() {
             ) : null}
           </>
         ) : (
-          // Article list and pagination
           <>
-            {/* Remove Load Articles button and UI */}
             {/* Article List */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6 gap-3">
               {articles.map((article) => (
@@ -517,23 +447,22 @@ function HomePageContent() {
                   key={article.id}
                   article={article}
                   onArticleClick={handleArticleClick}
-                  isLoading={loadingArticleId === article.id}
+                  isLoading={loading.articleId === article.id}
                 />
               ))}
             </div>
             {/* Pagination */}
-            {totalArticles > 12 && (
+            {totalArticles > ARTICLES_PER_PAGE && (
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
                 totalItems={totalArticles}
-                itemsPerPage={itemsPerPage}
+                itemsPerPage={ARTICLES_PER_PAGE}
                 onPageChange={(page) => {
                   setCurrentPage(page);
                   loadArticles(selectedCategory, page, selectedFeeds);
                   saveStateToStorage();
                   updateURLWithState();
-                  // Scroll to top on mobile after page change
                   if (typeof window !== 'undefined' && window.innerWidth < 640) {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }
@@ -543,7 +472,6 @@ function HomePageContent() {
           </>
         )}
       </main>
-      {/* Article Detail Modal (unchanged) */}
       {selectedArticle && (
         <ArticleDetail
           article={selectedArticle}

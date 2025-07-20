@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { CATEGORY_COLORS, CATEGORY_ICONS, SOURCE_ICONS } from "./constants"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -11,7 +12,6 @@ export function formatRelativeTime(dateString: string): string {
   if (dateString.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(dateString)) {
     date = new Date(dateString);
   } else {
-    // If no timezone, force UTC
     date = new Date(dateString + 'Z');
   }
   const now = new Date();
@@ -51,40 +51,15 @@ export function formatRelativeTime(dateString: string): string {
 }
 
 export function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
-    'tech': 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200',
-    'finance': 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200',
-    'global_news': 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200',
-    'vietnam_news': 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200',
-    'default': 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-  };
-  return colors[category] || colors['default'];
+  return CATEGORY_COLORS[category] || CATEGORY_COLORS['default'];
 }
 
 export function getCategoryIcon(category: string): string {
-  const icons: Record<string, string> = {
-    'tech': '💻',
-    'finance': '💰',
-    'global_news': '🌍',
-    'vietnam_news': '🇻🇳',
-    'default': '📰'
-  };
-  return icons[category] || icons['default'];
+  return CATEGORY_ICONS[category] || CATEGORY_ICONS['default'];
 }
 
 export function getSourceIcon(sourceName: string): string {
-  const sourceIcons: Record<string, string> = {
-    'Kenh14': '📱',
-    'VnExpress': '📰',
-    'Tuổi Trẻ': '📖',
-    'TechCrunch': '⚡',
-    'BBC': '🇬🇧',
-    'CNN': '🇺🇸',
-    'Vox': '🎯',
-    'The Verge': '🔮',
-    'default': '📰'
-  };
-  return sourceIcons[sourceName] || sourceIcons['default'];
+  return SOURCE_ICONS[sourceName] || SOURCE_ICONS['default'];
 }
 
 export function truncateText(text: string, maxLength: number): string {

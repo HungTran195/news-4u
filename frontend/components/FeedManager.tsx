@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { newsApi, RSSFeed } from '@/lib/api';
-import { Check, Globe, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
+import { CATEGORY_COLORS } from '@/lib/constants';
 
 interface FeedManagerProps {
   selectedFeeds: string[];
@@ -13,8 +14,8 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
   const [feeds, setFeeds] = useState<RSSFeed[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSelector, setShowSelector] = useState(false);
-  const [localSelection, setLocalSelection] = useState<string[]>(selectedFeeds); // local state for selection
-  const [applying, setApplying] = useState(false); // loading state for apply
+  const [localSelection, setLocalSelection] = useState<string[]>(selectedFeeds);
+  const [applying, setApplying] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
   }, []);
 
   useEffect(() => {
-    setLocalSelection(selectedFeeds); // keep local selection in sync with parent
+    setLocalSelection(selectedFeeds);
   }, [selectedFeeds]);
 
   useEffect(() => {
@@ -73,10 +74,9 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
   const handleApply = async () => {
     setApplying(true);
     try {
-      await onFeedSelectionApply(localSelection);    // Notify parent only
+      await onFeedSelectionApply(localSelection);
       setShowSelector(false);
     } catch (err) {
-      // Optionally show error to user
       console.error(err);
     } finally {
       setApplying(false);
@@ -84,18 +84,8 @@ export default function FeedManager({ selectedFeeds, onFeedSelectionApply }: Fee
   };
 
   const getCategoryColor = (category: string) => {
-    switch (category.toLowerCase().replace(/\s/g, '_')) {
-      case 'tech':
-        return 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
-      case 'us_news':
-        return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
-      case 'global_news':
-        return 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200';
-      case 'vietnamese_news':
-        return 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
-      default:
-        return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-    }
+    const normalizedCategory = category.toLowerCase().replace(/\s/g, '_');
+    return CATEGORY_COLORS[normalizedCategory] || CATEGORY_COLORS['default'];
   };
 
   if (loading) {
