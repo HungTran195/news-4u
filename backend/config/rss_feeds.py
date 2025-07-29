@@ -16,6 +16,7 @@ class RSSFeed(NamedTuple):
     name: str
     url: str
     category: NewsCategory
+    is_active: bool = True
 
 # RSS Feeds Configuration
 RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
@@ -23,51 +24,60 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
         RSSFeed(
             name="Vnexpress",
             url="https://vnexpress.net/rss/tin-moi-nhat.rss",
-            category=NewsCategory.VIETNAMESE_NEWS
+            category=NewsCategory.VIETNAMESE_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name="Tuoitre",
             url="https://tuoitre.vn/rss/tin-moi-nhat.rss",
-            category=NewsCategory.VIETNAMESE_NEWS
+            category=NewsCategory.VIETNAMESE_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name="Kenh14",
             url="https://kenh14.vn/rss/home.rss",
-            category=NewsCategory.VIETNAMESE_NEWS
+            category=NewsCategory.VIETNAMESE_NEWS,
+            is_active=True
         ),
     ],
     NewsCategory.TECH: [
         RSSFeed(
             name="TechCrunch",
             url="https://techcrunch.com/feed/",
-            category=NewsCategory.TECH
+            category=NewsCategory.TECH,
+            is_active=True
         ),
         RSSFeed(
             name="The Verge",
             url="https://www.theverge.com/rss/index.xml",
-            category=NewsCategory.TECH
+            category=NewsCategory.TECH,
+            is_active=True
         ),
         RSSFeed(
             name="Engadget",
             url="https://www.engadget.com/rss.xml",
-            category=NewsCategory.TECH
+            category=NewsCategory.TECH,
+            is_active=True
         )
     ],
     NewsCategory.US_NEWS: [
         RSSFeed(
             name="CNBC",
             url="https://www.cnbc.com/id/100003114/device/rss/rss.html",
-            category=NewsCategory.US_NEWS
+            category=NewsCategory.US_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name="NBC News",
             url="https://feeds.nbcnews.com/nbcnews/public/news",
-            category=NewsCategory.US_NEWS
+            category=NewsCategory.US_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name= "ABC News",
             url="https://abcnews.go.com/abcnews/usheadlines",
-            category=NewsCategory.US_NEWS
+            category=NewsCategory.US_NEWS,
+            is_active=True
         ),
     ],
 
@@ -75,17 +85,20 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
         RSSFeed(
             name="BBC News",
             url="https://feeds.bbci.co.uk/news/rss.xml",
-            category=NewsCategory.GLOBAL_NEWS
+            category=NewsCategory.GLOBAL_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name="CNBC Global",
             url="https://www.cnbc.com/id/100727362/device/rss/rss.html",
-            category=NewsCategory.GLOBAL_NEWS
+            category=NewsCategory.GLOBAL_NEWS,
+            is_active=True
         ),
         RSSFeed(
             name="CBSNews",
             url="https://www.cbsnews.com/latest/rss/world",
-            category=NewsCategory.GLOBAL_NEWS
+            category=NewsCategory.GLOBAL_NEWS,
+            is_active=True
         ),
     ]    
 }
@@ -96,6 +109,14 @@ def get_all_feeds() -> List[RSSFeed]:
     all_feeds = []
     for category_feeds in RSS_FEEDS.values():
         all_feeds.extend(category_feeds)
+    return all_feeds
+
+
+def get_active_feeds() -> List[RSSFeed]:
+    """Get all active RSS feeds as a flat list."""
+    all_feeds = []
+    for category_feeds in RSS_FEEDS.values():
+        all_feeds.extend([feed for feed in category_feeds if feed.is_active])
     return all_feeds
 
 

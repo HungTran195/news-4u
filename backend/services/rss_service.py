@@ -13,7 +13,7 @@ import re
 from newspaper import Article, Config
 import logging
 
-from config.rss_feeds import RSSFeed, get_all_feeds, NewsCategory
+from config.rss_feeds import RSSFeed, get_all_feeds, get_active_feeds, NewsCategory
 from models.database import RSSFeed as RSSFeedModel, NewsArticle, FeedFetchLog
 from sqlalchemy.orm import Session
 from services.site_extractors import site_extractor_manager
@@ -64,10 +64,8 @@ class RSSService:
             self.db.commit()
         
         try:
-            # Try with retries for problematic feeds
-            response = await self._fetch_with_retry(feed.url)
-            
             logger.info(f'---- Fetching feed from {feed.name} ----')
+            response = await self._fetch_with_retry(feed.url)
             
             # Parse feed
             parsed_feed = feedparser.parse(response.text)
@@ -111,9 +109,9 @@ class RSSService:
     
     async def fetch_all_feeds(self) -> Dict:
         """
-        Fetch all configured RSS feeds.
+        Fetch all active RSS feeds.
         """
-        feeds = get_all_feeds()
+        feeds = get_active_feeds()
         results = []
         for feed in feeds:
             result = await self.fetch_feed_async(feed)
@@ -133,8 +131,13 @@ class RSSService:
         """
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(article_url)
-                response.raise_for_status()
+                try: 
+                    response = await client.get(article_url)
+                    response.raise_for_status()
+                except Exception as e:
+                    logger.error(f"Error fetching article from {article_url}: {e}. trying with headers")
+                    response = await client.get(article_url, headers=self._headers)
+                    response.raise_for_status()
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
@@ -216,6 +219,36 @@ class RSSService:
         ).order_by(
             NewsArticle.published_date.desc()
         ).limit(limit).all()
+    
+    
+    def get_feed_by_name_from_db(self, name: str) -> RSSFeedModel | None:
+        """
+        Get a specific RSS feed from database by name.
+        """
+        if self.db is None:
+            return None
+        return self.db.query(RSSFeedModel).filter(RSSFeedModel.name == name).first()
+    
+    def toggle_feed_status(self, feed_name: str) -> Dict:
+        """
+        Toggle the active status of a feed.
+        """
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        feed = self.get_feed_by_name_from_db(feed_name)
+        if not feed:
+            return {"status": "error", "message": f"Feed '{feed_name}' not found"}
+        
+        feed.is_active = not feed.is_active
+        self.db.commit()
+        
+        return {
+            "status": "success",
+            "feed_name": feed.name,
+            "is_active": feed.is_active,
+            "message": f"Feed '{feed_name}' {'activated' if feed.is_active else 'deactivated'}"
+        }
     
     # ============================================================================
     # PRIVATE METHODS

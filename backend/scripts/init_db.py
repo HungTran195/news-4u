@@ -42,7 +42,7 @@ def main():
                     name=feed.name,
                     url=feed.url,
                     category=feed.category.value,
-                    is_active=True
+                    is_active=feed.is_active
                 )
                 db.add(db_feed)
                 loaded_count += 1

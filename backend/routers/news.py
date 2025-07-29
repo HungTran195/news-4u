@@ -307,6 +307,18 @@ async def fetch_specific_feed(feed_name: str, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/feeds/{feed_name}/toggle")
+async def toggle_feed_status(feed_name: str, db: Session = Depends(get_db)):
+    """Toggle the active status of a feed."""
+    service = RSSService(db)
+    result = service.toggle_feed_status(feed_name)
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=404, detail=result["message"])
+    
+    return result
+
+
 @router.get("/stats")
 async def get_stats(db: Session = Depends(get_db)):
     """Get news aggregation statistics."""
