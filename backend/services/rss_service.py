@@ -64,10 +64,8 @@ class RSSService:
             self.db.commit()
         
         try:
-            # Try with retries for problematic feeds
-            response = await self._fetch_with_retry(feed.url)
-            
             logger.info(f'---- Fetching feed from {feed.name} ----')
+            response = await self._fetch_with_retry(feed.url)
             
             # Parse feed
             parsed_feed = feedparser.parse(response.text)
@@ -133,8 +131,13 @@ class RSSService:
         """
         try:
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(article_url)
-                response.raise_for_status()
+                try: 
+                    response = await client.get(article_url)
+                    response.raise_for_status()
+                except Exception as e:
+                    logger.error(f"Error fetching article from {article_url}: {e}. trying with headers")
+                    response = await client.get(article_url, headers=self._headers)
+                    response.raise_for_status()
                 
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
