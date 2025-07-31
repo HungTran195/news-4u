@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import logging
 from sqlalchemy import func
 from models.database import NewsArticle, FeedFetchLog, RSSFeed
+from config.rss_feeds import RSSFeedCreate
 
 from database import get_db
 from services.rss_service import RSSService
@@ -532,13 +533,16 @@ async def clean_content_batch(
 async def delete_feed(feed_name: str, db: Session = Depends(get_db)):
     """Delete a feed."""
     service = RSSService(db)
-    await service.delete_feed(feed_name)
+    service.delete_feed(feed_name)
     return {"message": f"Feed '{feed_name}' deleted successfully"}
 
 
 @router.post("/admin/feeds/add")
-async def add_feed(feed: RSSFeed, db: Session = Depends(get_db)):
+async def add_feed(feed: RSSFeedCreate, db: Session = Depends(get_db)):
     """Add a feed."""
-    service = RSSService(db)
-    await service.add_feed(feed)
+    db_feed = RSSFeed(**feed.model_dump())
+
+    db.add(db_feed)
+    db.commit()
+    db.refresh(db_feed)
     return {"message": f"Feed {feed.name} added successfully"}
