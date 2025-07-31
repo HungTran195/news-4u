@@ -527,3 +527,18 @@ async def clean_content_batch(
     service = RSSService(db)
     result = await service.clean_content_batch(batch_size)
     return result
+
+@router.delete("/admin/feeds/delete/{feed_name}")
+async def delete_feed(feed_name: str, db: Session = Depends(get_db)):
+    """Delete a feed."""
+    service = RSSService(db)
+    await service.delete_feed(feed_name)
+    return {"message": f"Feed '{feed_name}' deleted successfully"}
+
+
+@router.post("/admin/feeds/add")
+async def add_feed(feed: RSSFeed, db: Session = Depends(get_db)):
+    """Add a feed."""
+    service = RSSService(db)
+    await service.add_feed(feed)
+    return {"message": f"Feed {feed.name} added successfully"}

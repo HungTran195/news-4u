@@ -220,7 +220,6 @@ class RSSService:
             NewsArticle.published_date.desc()
         ).limit(limit).all()
     
-    
     def get_feed_by_name_from_db(self, name: str) -> RSSFeedModel | None:
         """
         Get a specific RSS feed from database by name.
@@ -249,6 +248,28 @@ class RSSService:
             "is_active": feed.is_active,
             "message": f"Feed '{feed_name}' {'activated' if feed.is_active else 'deactivated'}"
         }
+    
+    def add_feed(self, feed: RSSFeed) -> Dict:
+        """
+        Add a feed to the database.
+        """
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        self.db.add(feed)
+        self.db.commit()
+        return {"status": "success", "message": f"Feed '{feed.name}' added successfully"}
+    
+    def delete_feed(self, feed_name: str) -> Dict:
+        """
+        Delete a feed from the database.
+        """
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        self.db.query(RSSFeedModel).filter(RSSFeedModel.name == feed_name).delete()
+        self.db.commit()
+        return {"status": "success", "message": f"Feed '{feed_name}' deleted successfully"}
     
     # ============================================================================
     # PRIVATE METHODS

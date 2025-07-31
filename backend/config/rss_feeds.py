@@ -32,13 +32,7 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
             url="https://tuoitre.vn/rss/tin-moi-nhat.rss",
             category=NewsCategory.VIETNAMESE_NEWS,
             is_active=True
-        ),
-        RSSFeed(
-            name="Kenh14",
-            url="https://kenh14.vn/rss/home.rss",
-            category=NewsCategory.VIETNAMESE_NEWS,
-            is_active=True
-        ),
+        )
     ],
     NewsCategory.TECH: [
         RSSFeed(
