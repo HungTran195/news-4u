@@ -9,11 +9,11 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from dateutil import parser as dateutil_parser
 
-from config.rss_feeds import NewsCategory, RSSFeed, get_active_feeds, get_all_feeds
 from config.rss_feeds import NewsCategory, RSSFeed
 import feedparser
 import httpx
@@ -23,7 +23,6 @@ from newspaper import Article, Config
 from services.site_extractors import site_extractor_manager
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
-from urllib.parse import urljoin
 
 # Set up logger
 logger = logging.getLogger(__name__)
