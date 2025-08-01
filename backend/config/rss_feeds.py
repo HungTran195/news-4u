@@ -4,6 +4,7 @@ RSS Feeds Configuration
 
 from typing import Dict, List, NamedTuple
 from enum import Enum
+from pydantic import BaseModel
 
 
 class NewsCategory(str, Enum):
@@ -32,13 +33,7 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
             url="https://tuoitre.vn/rss/tin-moi-nhat.rss",
             category=NewsCategory.VIETNAMESE_NEWS,
             is_active=True
-        ),
-        RSSFeed(
-            name="Kenh14",
-            url="https://kenh14.vn/rss/home.rss",
-            category=NewsCategory.VIETNAMESE_NEWS,
-            is_active=True
-        ),
+        )
     ],
     NewsCategory.TECH: [
         RSSFeed(
@@ -103,6 +98,10 @@ RSS_FEEDS: Dict[NewsCategory, List[RSSFeed]] = {
     ]    
 }
 
+class RSSFeedCreate(BaseModel):
+    name: str
+    url: str
+    category: NewsCategory
 
 def get_all_feeds() -> List[RSSFeed]:
     """Get all RSS feeds as a flat list."""

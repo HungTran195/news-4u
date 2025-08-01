@@ -2,22 +2,27 @@
 RSS service for fetching and processing RSS feeds.
 """
 
+import asyncio
+from datetime import timezone
+from datetime import datetime
+import logging
+import re
+import time
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
+
+from bs4 import BeautifulSoup
+from dateutil import parser as dateutil_parser
+
+from config.rss_feeds import NewsCategory, RSSFeed
 import feedparser
 import httpx
-import asyncio
-from typing import List, Dict, Optional, Any
-from datetime import datetime
-import time
-from bs4 import BeautifulSoup
-import re
-from newspaper import Article, Config
-import logging
-
-from config.rss_feeds import RSSFeed, get_all_feeds, get_active_feeds, NewsCategory
-from models.database import RSSFeed as RSSFeedModel, NewsArticle, FeedFetchLog
-from sqlalchemy.orm import Session
-from services.site_extractors import site_extractor_manager
 from lib.utils import generate_unique_slug
+from models.database import FeedFetchLog, NewsArticle, RSSFeed as RSSFeedModel
+from newspaper import Article, Config
+from services.site_extractors import site_extractor_manager
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -111,17 +116,30 @@ class RSSService:
         """
         Fetch all active RSS feeds.
         """
-        feeds = get_active_feeds()
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        db_feeds = self.db.query(RSSFeedModel).filter(RSSFeedModel.is_active == True).all()
+        
         results = []
-        for feed in feeds:
+        for db_feed in db_feeds:
+            logger.info(f"---- Fetching feed from {db_feed.name} ----")
+            feed = RSSFeed(
+                name=db_feed.name,
+                url=db_feed.url,
+                category=NewsCategory(db_feed.category),
+                is_active=db_feed.is_active
+            )
+            
             result = await self.fetch_feed_async(feed)
             results.append({
                 "feed_name": feed.name,
                 "category": feed.category.value,
                 **result
             })
+        
         return {
-            "total_feeds": len(feeds),
+            "total_feeds": len(db_feeds),
             "results": results
         }
     
@@ -220,7 +238,6 @@ class RSSService:
             NewsArticle.published_date.desc()
         ).limit(limit).all()
     
-    
     def get_feed_by_name_from_db(self, name: str) -> RSSFeedModel | None:
         """
         Get a specific RSS feed from database by name.
@@ -249,6 +266,17 @@ class RSSService:
             "is_active": feed.is_active,
             "message": f"Feed '{feed_name}' {'activated' if feed.is_active else 'deactivated'}"
         }
+    
+    
+    def delete_feed(self, feed_name: str) -> Dict:
+        """
+        Delete a feed from the database.
+        """
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        self.db.query(RSSFeedModel).filter(RSSFeedModel.name == feed_name).delete()
+        self.db.commit()
     
     # ============================================================================
     # PRIVATE METHODS
@@ -350,7 +378,7 @@ class RSSService:
             return 0
 
         try:
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+            
 
             article_dicts = []
             for article_obj in articles_to_add:
@@ -449,9 +477,7 @@ class RSSService:
         Robustly extract published date from RSS entry, trying all common fields.
         Always returns a UTC datetime (with tzinfo=timezone.utc).
         """
-        from dateutil import parser as dateutil_parser
-        from datetime import timezone
-        import re
+        
         
         date_fields = [
             'published', 'pubDate', 'updated', 'created', 'date',
@@ -527,7 +553,6 @@ class RSSService:
         """
         Convert relative URL to absolute URL.
         """
-        from urllib.parse import urljoin
         return urljoin(base_url, url)
     
     def _is_valid_content_image(self, image_url: str) -> bool:
@@ -639,71 +664,7 @@ class RSSService:
         
         return str(soup)
     
-    async def clean_content_batch(self, batch_size: int = 100) -> Dict[str, Any]:
-        """
-        Clean HTML content for articles in batches.
-        """
-        if self.db is None:
-            return {"status": "error", "message": "No database connection"}
-        
-        try:
-            # Get articles without content or with raw content
-            articles_without_content = self.db.query(NewsArticle).filter(
-                (NewsArticle.content.is_(None)) | 
-                (NewsArticle.content == '') |
-                (NewsArticle.content.like('%<div class=%')) |
-                (NewsArticle.content.like('%<div id=%'))
-            ).limit(batch_size).all()
-            
-            if not articles_without_content:
-                return {
-                    "status": "success",
-                    "message": "No articles found that need content cleaning",
-                    "articles_processed": 0
-                }
-            
-            processed_count = 0
-            for article in articles_without_content:
-                try:
-                    if article.content:
-                        # Clean existing content
-                        cleaned_content = self._sanitize_html_attributes(article.content)
-                        if cleaned_content != article.content:
-                            article.content = cleaned_content
-                            article.updated_at = datetime.now()
-                            processed_count += 1
-                    else:
-                        # Try to extract content if missing
-                        if article.link:
-                            content, _ = await self.extract_article_content(article.link)
-                            if content:
-                                article.content = content
-                                article.updated_at = datetime.now()
-                                processed_count += 1
-                
-                except Exception as e:
-                    logger.error(f"Error cleaning content for article {article.id}: {e}")
-                    continue
-            
-            self.db.commit()
-            
-            return {
-                "status": "success",
-                "message": f"Successfully processed {processed_count} articles",
-                "articles_processed": processed_count,
-                "total_articles_in_batch": len(articles_without_content)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in batch content cleaning: {e}")
-            if self.db is not None:
-                self.db.rollback()
-            return {
-                "status": "error",
-                "message": f"Error during batch processing: {str(e)}",
-                "articles_processed": 0
-            }
-    
+
     def _extract_main_image_url_from_html(self, html: str, base_url: str) -> Optional[str]:
         """
         Extract the main image URL from HTML content.
