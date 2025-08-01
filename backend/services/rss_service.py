@@ -2,22 +2,27 @@
 RSS service for fetching and processing RSS feeds.
 """
 
+import asyncio
+from datetime import timezone
+from datetime import datetime
+import logging
+import re
+import time
+from typing import Any, Dict, List, Optional
+
+from bs4 import BeautifulSoup
+from dateutil import parser as dateutil_parser
+
+from config.rss_feeds import NewsCategory, RSSFeed, get_active_feeds, get_all_feeds
+from config.rss_feeds import NewsCategory, RSSFeed
 import feedparser
 import httpx
-import asyncio
-from typing import List, Dict, Optional, Any
-from datetime import datetime
-import time
-from bs4 import BeautifulSoup
-import re
-from newspaper import Article, Config
-import logging
-
-from config.rss_feeds import RSSFeed, get_all_feeds, get_active_feeds, NewsCategory
-from models.database import RSSFeed as RSSFeedModel, NewsArticle, FeedFetchLog
-from sqlalchemy.orm import Session
-from services.site_extractors import site_extractor_manager
 from lib.utils import generate_unique_slug
+from models.database import FeedFetchLog, NewsArticle, RSSFeed as RSSFeedModel
+from newspaper import Article, Config
+from services.site_extractors import site_extractor_manager
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import Session
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -111,17 +116,30 @@ class RSSService:
         """
         Fetch all active RSS feeds.
         """
-        feeds = get_active_feeds()
+        if self.db is None:
+            return {"status": "error", "message": "No database connection"}
+        
+        db_feeds = self.db.query(RSSFeedModel).filter(RSSFeedModel.is_active == True).all()
+        
         results = []
-        for feed in feeds:
+        for db_feed in db_feeds:
+            logger.info(f"---- Fetching feed from {db_feed.name} ----")
+            feed = RSSFeed(
+                name=db_feed.name,
+                url=db_feed.url,
+                category=NewsCategory(db_feed.category),
+                is_active=db_feed.is_active
+            )
+            
             result = await self.fetch_feed_async(feed)
             results.append({
                 "feed_name": feed.name,
                 "category": feed.category.value,
                 **result
             })
+        
         return {
-            "total_feeds": len(feeds),
+            "total_feeds": len(db_feeds),
             "results": results
         }
     
@@ -360,7 +378,7 @@ class RSSService:
             return 0
 
         try:
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+            
 
             article_dicts = []
             for article_obj in articles_to_add:
@@ -459,9 +477,7 @@ class RSSService:
         Robustly extract published date from RSS entry, trying all common fields.
         Always returns a UTC datetime (with tzinfo=timezone.utc).
         """
-        from dateutil import parser as dateutil_parser
-        from datetime import timezone
-        import re
+        
         
         date_fields = [
             'published', 'pubDate', 'updated', 'created', 'date',
@@ -537,7 +553,6 @@ class RSSService:
         """
         Convert relative URL to absolute URL.
         """
-        from urllib.parse import urljoin
         return urljoin(base_url, url)
     
     def _is_valid_content_image(self, image_url: str) -> bool:
