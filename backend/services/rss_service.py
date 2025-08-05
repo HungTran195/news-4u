@@ -265,8 +265,7 @@ class RSSService:
             "feed_name": feed.name,
             "is_active": feed.is_active,
             "message": f"Feed '{feed_name}' {'activated' if feed.is_active else 'deactivated'}"
-        }
-    
+        }  
     
     def delete_feed(self, feed_name: str) -> Dict:
         """
@@ -278,6 +277,13 @@ class RSSService:
         self.db.query(RSSFeedModel).filter(RSSFeedModel.name == feed_name).delete()
         self.db.commit()
     
+    def get_all_feed_names(self) -> List[str]:
+        """
+        Get all feed names from the database.
+        """
+        if self.db is None:
+            return []
+        return [feed.name for feed in self.db.query(RSSFeedModel).all()]
     # ============================================================================
     # PRIVATE METHODS
     # ============================================================================
