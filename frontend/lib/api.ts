@@ -110,7 +110,7 @@ export const newsApi = {
   },
 
   // Get feeds
-  getFeeds: async (): Promise<RSSFeed[]> => {
+  getFeeds: async (): Promise<string[]> => {
     const response = await api.get('/api/news/feeds');
     return response.data;
   },

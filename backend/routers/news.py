@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 async def get_feeds(db: Session = Depends(get_db)):
     """Get all configured RSS feeds."""
     rss_service = RSSService(db)
-    return rss_service.get_all_feed_names()
+    return rss_service.get_all_feeds()
 
 @router.get("/feeds/logs", response_model=List[FeedFetchLogResponse], tags=["Feed"])
 async def get_fetch_logs(
